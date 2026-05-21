@@ -74,14 +74,18 @@ class TevaIndexClient:
                         return None
             return None
 
-        # 1. Busca por chave conhecida
+        # 1. Busca por chave conhecida (todas as ocorrências)
         for key in ('"chart"', '"data"', '"chartData"', '"historicalData"', '"series"', '"values"'):
             for sep in (f"{key}:[", f"{key}: ["):
-                idx = text.find(sep)
-                if idx != -1:
+                search_from = 0
+                while True:
+                    idx = text.find(sep, search_from)
+                    if idx == -1:
+                        break
                     result = _parse_from(text.index("[", idx))
                     if result is not None:
                         return result
+                    search_from = idx + 1
 
         # 2. Busca direta: objeto com "date"
         for marker in ('[{"date":"', '[ {"date":"'):
@@ -279,8 +283,8 @@ class TevaIndexClient:
 
 
 def main():
-    index_slug = "itbr-selic-indice-teva-tesouro-selic-3070"
-    nome_indice = "1.1.4B4 Índice Teva Tesouro Selic v0.92"
+    index_slug = "itbr-selic-indice-teva-tesouro-selic"
+    nome_indice = "ITBR SELIC - Índice Teva Tesouro Selic"
 
     client = TevaIndexClient()
 
@@ -294,7 +298,7 @@ def main():
     df["Índice"] = nome_indice
 
     file_name = f"teva_{datetime.today().strftime('%Y%m%d')}.csv"
-    df.to_csv(file_name, index=False)
+    df.to_csv(file_name, index=False, date_format="%Y-%m-%d", encoding="utf-8-sig")
 
     print(f"Arquivo salvo: {file_name}")
     print(df.head())
