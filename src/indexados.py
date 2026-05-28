@@ -73,10 +73,13 @@ previa = False
 updateVCRA = False
 
 lista_funcoes = [
-    batimento_pnl_acao, batimento_pnl_caixa,
-    batimento_pnl_fund_fidc, batimento_pnl_futuro,
-    batimento_pnl_opcao, batimento_pnl_rf,
-    batimento_pnl_swap
+    ('Acao',     batimento_pnl_acao),
+    ('Caixa',    batimento_pnl_caixa),
+    ('Fund',     batimento_pnl_fund_fidc),
+    ('Futuro',   batimento_pnl_futuro),
+    ('Opcao',    batimento_pnl_opcao),
+    ('RF',       batimento_pnl_rf),
+    ('Swap',     batimento_pnl_swap),
 ]
 
 
@@ -131,13 +134,25 @@ while data_atual <= data_fim:
         functions = [
             delayed(funcao)(date_ref=date_ref, lista_fundos=lista_fundos,
                             lista_mesa=[], test=True, only_diff=only_diff, tabela=tabela)
-            for funcao in lista_funcoes
+            for _, funcao in lista_funcoes
         ]
 
-        lista_df = Parallel(n_jobs=-1, verbose=10)(functions)
-        lista_df = [df for df in lista_df if df is not None]
+        lista_df_raw = Parallel(n_jobs=-1, verbose=10)(functions)
 
-        df_final = pd.concat(lista_df, ignore_index=True) if lista_df else pd.DataFrame()
+        dfs_por_tipo = {}
+        for (nome, _), df in zip(lista_funcoes, lista_df_raw):
+            if df is not None:
+                dfs_por_tipo[nome] = df
+
+        df_final = pd.concat(list(dfs_por_tipo.values()), ignore_index=True) if dfs_por_tipo else pd.DataFrame()
+
+        marretas_por_tipo = {}
+        for nome, df_tipo in dfs_por_tipo.items():
+            try:
+                marretas_por_tipo[nome] = aluguel_marreta(df_tipo)
+            except Exception as e:
+                print(f"⚠️  aluguel_marreta falhou para {nome} ({date_ref}): {e}")
+                marretas_por_tipo[nome] = pd.DataFrame()
 
         try:
             df_macro = get_diff_return(date_ref=date_ref)
@@ -205,6 +220,12 @@ while data_atual <= data_fim:
 
                 if not df_macro_fundo.empty:
                     df_pnl_excel(df_macro_fundo, "Macro erro", writer)
+
+                for nome, df_marreta_tipo in marretas_por_tipo.items():
+                    df_marreta_tipo_fundo = df_marreta_tipo[df_marreta_tipo['codigo_IAM_fundo'] == fundo] \
+                        if not df_marreta_tipo.empty else pd.DataFrame()
+                    if not df_marreta_tipo_fundo.empty:
+                        df_pnl_excel(df_marreta_tipo_fundo, f"Marreta={nome}", writer)
 
                 if not df_aluguel_fundo.empty:
                     df_pnl_excel(df_aluguel_fundo, "Aluguel", writer)
