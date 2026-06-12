@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluxograma - Load_DADOS337</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #0f1117;
+  color: #e0e0e0;
+  padding: 28px 16px 64px;
+  min-width: 960px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+}
+.subtitle {
+  text-align: center;
+  font-size: .82rem;
+  color: #888;
+  margin-bottom: 32px;
+}
+
+.page-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.flow-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.todo-col {
+  width: 340px;
+  min-width: 300px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.todo-col::-webkit-scrollbar { width: 4px; }
+.todo-col::-webkit-scrollbar-thumb { background: #2a2d3e; border-radius: 4px; }
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+}
+
+.arrow {
+  width: 2px;
+  height: 28px;
+  background: #444;
+  position: relative;
+  flex-shrink: 0;
+}
+.arrow::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 9px solid #444;
+}
+
+.node {
+  border-radius: 8px;
+  padding: 12px 18px;
+  text-align: center;
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.4;
+  border: 2px solid transparent;
+  transition: transform .15s, box-shadow .15s;
+  cursor: default;
+}
+.node:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+.oval { border-radius: 40px; width: 180px !important; }
+
+.c-start   { background:#1a3a2e; border-color:#27ae60; color:#2ecc71; }
+.c-end     { background:#2a1a1a; border-color:#c0392b; color:#e74c3c; }
+.c-init    { background:#1a2340; border-color:#2980b9; color:#74b9ff; }
+.c-clear   { background:#2a1a1a; border-color:#e67e22; color:#f0a868; }
+.c-connect { background:#1a2a2a; border-color:#16a085; color:#76d7c4; }
+.c-filter  { background:#1a1a2a; border-color:#9b59b6; color:#c39bd3; }
+
+.bloco-header { font-size:.9rem; font-weight:700; margin-bottom:6px; }
+.bloco-sub    { font-size:.72rem; font-weight:400; color:#aaa; margin-bottom:8px; }
+.bloco-code {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: .72rem;
+  font-weight: 400;
+  background: rgba(0,0,0,.3);
+  border-radius: 5px;
+  padding: 7px 10px;
+  text-align: left;
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+.bloco-detail { font-size:.7rem; font-weight:400; color:#bbb; text-align:left; }
+.kw           { color:#569cd6; }
+.str          { color:#ce9178; }
+.code-comment { color:#6a9955; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: .65rem;
+  font-weight: 700;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.badge-blue   { background:#1e3a5f; color:#74b9ff;  border:1px solid #2980b9; }
+.badge-teal   { background:#0e2a28; color:#76d7c4;  border:1px solid #16a085; }
+.badge-purple { background:#1e0e30; color:#c39bd3;  border:1px solid #8e44ad; }
+
+.clear-row    { display:flex; align-items:baseline; gap:8px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:.72rem; }
+.clear-aba    { font-weight:700; color:#f0a868; min-width:80px; }
+.clear-cols   { color:#ccc; flex:1; font-family:'Consolas',monospace; font-size:.68rem; }
+.clear-count  { color:#666; font-size:.65rem; white-space:nowrap; }
+
+.group {
+  border: 1.5px solid #333;
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: #13151c;
+}
+.group-title {
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #aaa;
+  margin-bottom: 10px;
+}
+.group-grid        { display:grid; gap:6px; }
+.group-grid.cols2  { grid-template-columns: 1fr 1fr; }
+.group-grid.cols3  { grid-template-columns: 1fr 1fr 1fr; }
+
+.tag          { border-radius:6px; padding:7px 10px; font-size:.74rem; font-weight:600; line-height:1.35; }
+.tag strong   { display:block; margin-bottom:3px; }
+.tag .src     { font-size:.64rem; font-weight:400; opacity:.8;  display:block; margin-top:1px; }
+.tag .dest    { font-size:.62rem; font-weight:400; opacity:.65; display:block; margin-top:1px; color:#7ec8e3; }
+.tag .lbl     { font-size:.62rem; font-weight:400; opacity:.7;  display:block; margin-top:3px; font-style:italic; }
+
+.t-pos   { background:#17273f; border:1px solid #2471a3; color:#85c1e9; }
+.t-moeda { background:#1f2b17; border:1px solid #1e8449; color:#a9dfbf; }
+.t-dur   { background:#2a2015; border:1px solid #b7770d; color:#f0b27a; }
+.t-rv    { background:#1f1530; border:1px solid #7d3c98; color:#d2b4de; }
+.t-fdo   { background:#1a2a2a; border:1px solid #148f77; color:#76d7c4; }
+.t-prov  { background:#2a1515; border:1px solid #a93226; color:#f1948a; }
+.t-fus   { background:#1a1a2a; border:1px solid #6a5acd; color:#b0a4e3; }
+
+.ftable { width:100%; border-collapse:collapse; font-size:.72rem; }
+.ftable th { background:#1e2030; color:#aaa; padding:5px 8px; text-align:left; font-weight:600; border-bottom:1px solid #333; white-space:nowrap; }
+.ftable td { padding:5px 8px; border-bottom:1px solid #1e1e1e; color:#ddd; }
+.ftable td code { font-family:'Consolas',monospace; color:#ce9178; font-size:.7rem; }
+.ftable tr:hover td { background:#1a1f2e; }
+
+.legend        { display:flex; gap:16px; flex-wrap:wrap; justify-content:center; margin-top:36px; font-size:.72rem; color:#aaa; }
+.legend-item   { display:flex; align-items:center; gap:6px; }
+.legend-dot    { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+
+/* TO DO PANEL */
+.todo-panel {
+  background: #13151c;
+  border: 1.5px solid #2a2d3e;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.todo-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; }
+.todo-title  { font-size:1rem; font-weight:700; color:#fff; }
+.todo-counter { font-size:.7rem; color:#888; background:#1e2030; padding:3px 8px; border-radius:12px; }
+.todo-progress-wrap { background:#1e2030; border-radius:4px; height:6px; overflow:hidden; }
+.todo-progress-fill { height:100%; background:linear-gradient(90deg,#27ae60,#2ecc71); border-radius:4px; transition:width .35s ease; }
+.todo-section-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#555; margin-bottom:6px; }
+
+.todo-list { display:flex; flex-direction:column; gap:4px; max-height:340px; overflow-y:auto; padding-right:2px; }
+.todo-list::-webkit-scrollbar { width:4px; }
+.todo-list::-webkit-scrollbar-thumb { background:#333; border-radius:4px; }
+
+.todo-item { display:flex; align-items:flex-start; gap:6px; padding:6px 8px; border-radius:6px; background:#1a1d28; border:1px solid #252840; transition:background .15s; }
+.todo-item:hover { background:#1e2235; }
+.todo-item.todo-done .todo-text { opacity:.45; text-decoration:line-through; }
+.todo-check { display:flex; align-items:flex-start; gap:7px; flex:1; cursor:pointer; min-width:0; }
+.todo-check input[type=checkbox] { margin-top:2px; flex-shrink:0; accent-color:#27ae60; width:14px; height:14px; cursor:pointer; }
+.todo-text  { font-size:.74rem; color:#d0d0d0; line-height:1.45; word-break:break-word; }
+.todo-edit-input { font-size:.74rem; color:#e0e0e0; background:#0f1117; border:1px solid #2980b9; border-radius:4px; padding:2px 6px; flex:1; min-width:0; outline:none; }
+.todo-del { background:none; border:none; color:#444; cursor:pointer; font-size:.72rem; padding:0 2px; flex-shrink:0; line-height:1; transition:color .15s; }
+.todo-del:hover { color:#e74c3c; }
+
+.todo-add { display:flex; gap:6px; }
+.todo-input { flex:1; background:#1a1d28; border:1px solid #2a2d3e; border-radius:6px; color:#e0e0e0; padding:6px 10px; font-size:.74rem; outline:none; transition:border-color .15s; }
+.todo-input:focus { border-color:#2980b9; }
+.todo-input::placeholder { color:#3a3d50; }
+.todo-add-btn { background:#1e4a30; border:1px solid #27ae60; color:#2ecc71; border-radius:6px; width:32px; font-size:1.1rem; cursor:pointer; transition:background .15s; flex-shrink:0; }
+.todo-add-btn:hover { background:#27ae60; color:#fff; }
+
+.todo-notes { width:100%; min-height:110px; background:#1a1d28; border:1px solid #2a2d3e; border-radius:6px; color:#d0d0d0; padding:8px 10px; font-size:.74rem; font-family:'Segoe UI',Arial,sans-serif; resize:vertical; outline:none; line-height:1.55; transition:border-color .15s; }
+.todo-notes:focus { border-color:#2980b9; }
+.todo-notes::placeholder { color:#3a3d50; }
+.todo-reset-btn { background:none; border:1px solid #2a2d3e; color:#555; border-radius:6px; padding:5px 10px; font-size:.68rem; cursor:pointer; transition:color .15s,border-color .15s; align-self:flex-end; }
+.todo-reset-btn:hover { color:#aaa; border-color:#555; }
+</style>
+</head>
+<body>
+<h1>Fluxograma &mdash; Sub Load_DADOS337()</h1>
+<div class="subtitle">VBA &middot; Exposicao Beta V20.xlsm &middot; dbsx337</div>
+<div class="page-layout">
+  <div class="flow-col">
+    <div class="flow">
+<div class="node oval c-start">&#x25B6; INICIO</div>
+<div class="arrow"></div>
+<div class="node c-init" style="width:520px"><div class="bloco-header">&#x2699; Inicializacao do Ambiente VBA</div><div class="bloco-sub">Workbook: <strong>Exposicao Beta V20.xlsm</strong> &nbsp;&middot;&nbsp; Parametros: <strong>PRM</strong></div><div class="bloco-code">Application.DisplayAlerts = <span class="kw">False</span><br>Application.ScreenUpdating = <span class="kw">False</span><br>Application.Calculation = <span class="kw">xlCalculationManual</span><br><span class="code-comment">'-- leitura da data de referencia --</span><br>dt_planilha = Format(prm.Range(<span class="str">"E2"</span>), <span class="str">"yyyy-mm-dd"</span>)</div><div class="bloco-detail"><span class="badge badge-blue">PRM!E2</span> Data de referencia do carregamento</div></div>
+<div class="arrow"></div>
+<div class="group" style="width:620px;border-color:#333"><div class="group-title">&#x1F3D7; Montagem de strings de tickers &mdash; planilha PRM</div><div class="group-grid cols3"><div class="tag t-fdo"><strong>string_builder</strong><span class="src">&#x1F4E6; prm col B (linhas 3->N)</span><span class="dest">&#x279C; PRM &middot; col B</span><span class="lbl">Tickers principais - fundos e cotas</span></div><div class="tag t-rv"><strong>string_builderrv</strong><span class="src">&#x1F4E6; prm col U (linhas 3->N)</span><span class="dest">&#x279C; PRM &middot; col U</span><span class="lbl">Tickers RV (usados em proventos)</span></div><div class="tag t-fus"><strong>string_builderCOTAS</strong><span class="src">&#x1F4E6; prm col AB (linhas 3->N)</span><span class="dest">&#x279C; PRM &middot; col AB</span><span class="lbl">Fundos com quebra de cotas (FICAD_CD)</span></div></div></div>
+<div class="arrow"></div>
+<div class="group" style="width:820px;border-color:#333"><div class="group-title">&#x1F4DD; Definicao das queries SQL &mdash; banco dbsx337 (25 queries)</div><div class="group-grid cols3"><div class="tag t-pos"><strong>sql_VCRAPLSI</strong><span class="src">&#x1F4E6; view_vcraplsi</span><span class="dest">&#x279C; Consulta &middot; Col F</span><span class="lbl">PL total por fundo</span></div><div class="tag t-pos"><strong>sql_VCRAPRF</strong><span class="src">&#x1F4E6; view_vcraprf</span><span class="dest">&#x279C; Consulta &middot; Col U</span><span class="lbl">Posicao Renda Fixa</span></div><div class="tag t-pos"><strong>sql_VCRAPRDP</strong><span class="src">&#x1F4E6; view_vcraprdp</span><span class="dest">&#x279C; Consulta &middot; Col X</span><span class="lbl">Posicao DP (excl. 251, 986, 987)</span></div><div class="tag t-pos"><strong>sql_SALDO_TESOURARIA</strong><span class="src">&#x1F4E6; view_vcraprdp (mttp=251)</span><span class="dest">&#x279C; Consulta &middot; Col AQ</span><span class="lbl">Saldo Tesouraria</span></div><div class="tag t-fdo"><strong>sql_COTAS</strong><span class="src">&#x1F4E6; view_vcrapfdo (vl_liq)</span><span class="dest">&#x279C; Consulta &middot; Col AN</span><span class="lbl">Cotas de fundos</span></div><div class="tag t-pos"><strong>sql_FUTURO</strong><span class="src">&#x1F4E6; view_vcrapfut</span><span class="dest">&#x279C; Consulta &middot; Col BD</span><span class="lbl">Futuros notional cotacao</span></div><div class="tag t-moeda"><strong>sql_BMFXTWO</strong><span class="src">&#x1F4E6; fundos_dados_moedas (BRL_B3_2/USD)</span><span class="dest">&#x279C; Consulta &middot; Col BZ</span><span class="lbl">USD/BRL</span></div><div class="tag t-moeda"><strong>sql_GBP16H</strong><span class="src">&#x1F4E6; fundos_dados_moedas (BRL_B3_2/GBP)</span><span class="dest">&#x279C; Consulta &middot; Col CC</span><span class="lbl">GBP/BRL</span></div><div class="tag t-moeda"><strong>sql_EURO</strong><span class="src">&#x1F4E6; fundos_dados_moedas (BRL_B3_2/EUR)</span><span class="dest">&#x279C; Consulta &middot; Col CG</span><span class="lbl">EUR/BRL</span></div><div class="tag t-moeda"><strong>sql_CNY</strong><span class="src">&#x1F4E6; FUNDOS_DADOS_INDICES (CNYXBR10)</span><span class="dest">&#x279C; Consulta &middot; Col EY</span><span class="lbl">CNY/BRL</span></div><div class="tag t-fdo"><strong>sql_CC_EXTERIOR</strong><span class="src">&#x1F4E6; view_vcrapfdo (vl_total)</span><span class="dest">&#x279C; Consulta &middot; Col BP</span><span class="lbl">Caixa exterior</span></div><div class="tag t-pos"><strong>sql_PRFABERTO</strong><span class="src">&#x1F4E6; view_vcraprf (NTN-B/F, LTN, DEBIN)</span><span class="dest">&#x279C; Consulta &middot; Col CN</span><span class="lbl">RF Aberto</span></div><div class="tag t-pos"><strong>sql_swap</strong><span class="src">&#x1F4E6; view_vcrapswp</span><span class="dest">&#x279C; Consulta &middot; Col CS</span><span class="lbl">Swap ativo / passivo</span></div><div class="tag t-dur"><strong>sql_duration</strong><span class="src">&#x1F4E6; view_vcraprf</span><span class="dest">&#x279C; Duration &middot; Col A</span><span class="lbl">Duration RF</span></div><div class="tag t-dur"><strong>sql_indexduration</strong><span class="src">&#x1F4E6; tbhh3031_anbima_indices</span><span class="dest">&#x279C; Duration &middot; Col R</span><span class="lbl">Duration indice ANBIMA</span></div><div class="tag t-moeda"><strong>sql_dolarcupomlimpo</strong><span class="src">&#x1F4E6; fundos_dados_moedas (BRL_B3_CL/USD)</span><span class="dest">&#x279C; Consulta &middot; Col DP</span><span class="lbl">USD cupom limpo</span></div><div class="tag t-moeda"><strong>sql_cotacoesvsusd</strong><span class="src">&#x1F4E6; bbg_fx (GBPUSD F150)</span><span class="dest">&#x279C; Consulta &middot; Col DU</span><span class="lbl">GBP vs USD</span></div><div class="tag t-moeda"><strong>sql_eurousd</strong><span class="src">&#x1F4E6; bbg_fx (EURUSD F150)</span><span class="dest">&#x279C; Consulta &middot; Col DZ</span><span class="lbl">EUR vs USD</span></div><div class="tag t-prov"><strong>proventos</strong><span class="src">&#x1F4E6; view_vcraprdp (mttp 61,62,69,261)</span><span class="dest">&#x279C; Consulta &middot; Col DX</span><span class="lbl">Proventos RV</span></div><div class="tag t-moeda"><strong>moedas</strong><span class="src">&#x1F4E6; bbg_fx (ADU3/CDU3/ECU3/JYU3)</span><span class="dest">&#x279C; Moedas &middot; Col AO</span><span class="lbl">Moedas futuros</span></div><div class="tag t-fdo"><strong>sql_COTAS_quebradas</strong><span class="src">&#x1F4E6; view_vcrapfdo (FICAD_CD)</span><span class="dest">&#x279C; Consulta &middot; Col EE</span><span class="lbl">Cotas com quebra</span></div><div class="tag t-fus"><strong>sql_FUSION</strong><span class="src">&#x1F4E6; VieW_FUNDOS_POSICAO (FUSION57691)</span><span class="dest">&#x279C; Consulta &middot; Col EI</span><span class="lbl">Fusion Future</span></div><div class="tag t-pos"><strong>consulta_fut</strong><span class="src">&#x1F4E6; view_vcrapfut (c/ fuvct_cd)</span><span class="dest">&#x279C; Rolagens &middot; Col A</span><span class="lbl">Rolagens de futuros</span></div><div class="tag t-fdo"><strong>sql_pfdo</strong><span class="src">&#x1F4E6; view_vcrapfdo (TIPO_CLASSIF)</span><span class="dest">&#x279C; Consulta &middot; Col EQ</span><span class="lbl">Posicao FDO</span></div><div class="tag t-dur"><strong>consulta_teva</strong><span class="src">&#x1F4E6; FUNDOS_COMPOSICAO_INDICES (ITBR_5_PRE)</span><span class="dest">&#x279C; Consulta &middot; Col EW</span><span class="lbl">Teva Pre 5</span></div></div></div>
+<div class="arrow"></div>
+<div class="node c-clear" style="width:640px"><div class="bloco-header">&#x1F5D1; Limpeza de intervalos</div><div class="bloco-sub">29 intervalos em 5 abas</div><div class="clear-row"><span class="clear-aba">Consulta</span><span class="clear-cols">D &middot; F:G &middot; I:N &middot; U:V &middot; X:Y &middot; AN:AO &middot; AQ:AR &middot; BD:BK &middot; BP:BV &middot; BY:CI &middot; CL:CN &middot; CS:CV &middot; CX:CZ &middot; DD:DE &middot; DG:DH &middot; DJ:DL &middot; DO:DQ &middot; DT:DV &middot; DX:DZ &middot; EE:EG &middot; EI:EN &middot; EQ:EU &middot; EW:EY &middot; FA:FG</span><span class="clear-count">24 int.</span></div><div class="clear-row"><span class="clear-aba">Duration</span><span class="clear-cols">A:G &middot; R:T</span><span class="clear-count">2 int.</span></div><div class="clear-row"><span class="clear-aba">Alerta</span><span class="clear-cols">B</span><span class="clear-count">1 int.</span></div><div class="clear-row"><span class="clear-aba">Moedas</span><span class="clear-cols">AO:AQ</span><span class="clear-count">1 int.</span></div><div class="clear-row"><span class="clear-aba">Rolagens</span><span class="clear-cols">A:G</span><span class="clear-count">1 int.</span></div></div>
+<div class="arrow"></div>
+<div class="node c-connect" style="width:390px"><div class="bloco-header">&#x1F50C; Conexao com banco de dados</div><div class="bloco-sub">Call <strong>sSQL_Connect</strong></div><div class="bloco-code">Provider: <span class="kw">ADODB.Connection</span><br>Data Source: <strong>dbsx337</strong><br>Retorno: <span class="str">conn</span> &amp; <span class="str">rst</span> (Recordset)</div><div class="bloco-detail"><span class="badge badge-teal">ADODB</span> Conexao reutilizada por todas as queries</div></div>
+<div class="arrow"></div>
+<div class="group" style="width:780px;border-color:#6c3483"><div class="group-title" style="color:#c39bd3">&#x2699; Bloco PRV &mdash; Acoes RV + Aluguel BTC (planilha TEMP intermediaria)</div><div style="display:flex;gap:8px;flex-direction:column"><div class="tag t-rv"><strong>1. Cria aba TEMP</strong><span class="src">Worksheets.Add.Name = &quot;TEMP&quot;</span></div><div class="tag t-rv"><strong>2. sql_ALUGUEL &rarr; TEMP!A2</strong><span class="src">VIEW_VCRABTC: CLCLI_CD, CODPAP, tipo_movimento, CASE Doador/Tomador qty</span></div><div class="tag t-rv"><strong>3. sql_prv &rarr; TEMP!F2</strong><span class="src">VIEW_vcraprv JOIN VIEW_FUNDOS_POSICAO: acao, qtd, preco, moeda</span></div><div class="tag t-rv"><strong>4. sql_join &rarr; TEMP!M2</strong><span class="src">VIEW_vcraprv: lista clcli_cd x acao</span></div><div class="tag t-rv"><strong>5. sql_join2 &rarr; TEMP!M (append)</strong><span class="src">VIEW_VCRABTC: lista clcli_cd x CODPAP</span></div><div class="tag t-rv"><strong>6. Sort + RemoveDuplicates (M:N)</strong><span class="src">Ordena por acao/papel e fundo; remove duplicatas</span></div><div class="tag t-rv"><strong>7. Col O &mdash; Qtd liquida</strong><span class="src">=SUMIFS(qtdBTC_Doador) + SUMIFS(qtdBTC_Tomador) + SUMIFS(qtdPRV)</span></div><div class="tag t-rv"><strong>8. Col P &mdash; Financeiro</strong><span class="src">=qty x preco (com ajuste EXCS LN x100)</span></div><div class="tag t-rv"><strong>9. Col Q &mdash; Moeda</strong><span class="src">=VLOOKUP(acao, tbl_prv, col_moeda)</span></div><div class="tag t-rv"><strong>10. Copia TEMP!M:Q &rarr; Consulta!I3 (PasteValues) &middot; Deleta TEMP</strong></div></div></div>
+<div class="arrow"></div>
+<div class="group" style="width:920px"><div class="group-title">&#x25B6; Execucao das queries e destino no workbook (25 queries)</div><table class="ftable"><thead><tr><th>#</th><th>Query</th><th>Fonte (dbsx337)</th><th>Aba</th><th>Destino</th><th>Descricao</th></tr></thead><tbody><tr><td>1</td><td><code>sql_VCRAPLSI</code></td><td>view_vcraplsi</td><td>Consulta</td><td><code>Col F</code></td><td>PL total por fundo</td></tr><tr><td>2</td><td><code>sql_VCRAPRF</code></td><td>view_vcraprf</td><td>Consulta</td><td><code>Col U</code></td><td>Posicao Renda Fixa</td></tr><tr><td>3</td><td><code>sql_VCRAPRDP</code></td><td>view_vcraprdp</td><td>Consulta</td><td><code>Col X</code></td><td>Posicao DP (excl. 251, 986, 987)</td></tr><tr><td>4</td><td><code>sql_SALDO_TESOURARIA</code></td><td>view_vcraprdp (mttp=251)</td><td>Consulta</td><td><code>Col AQ</code></td><td>Saldo Tesouraria</td></tr><tr><td>5</td><td><code>sql_COTAS</code></td><td>view_vcrapfdo (vl_liq)</td><td>Consulta</td><td><code>Col AN</code></td><td>Cotas de fundos</td></tr><tr><td>6</td><td><code>sql_FUTURO</code></td><td>view_vcrapfut</td><td>Consulta</td><td><code>Col BD</code></td><td>Futuros notional cotacao</td></tr><tr><td>7</td><td><code>sql_BMFXTWO</code></td><td>fundos_dados_moedas (BRL_B3_2/USD)</td><td>Consulta</td><td><code>Col BZ</code></td><td>USD/BRL</td></tr><tr><td>8</td><td><code>sql_GBP16H</code></td><td>fundos_dados_moedas (BRL_B3_2/GBP)</td><td>Consulta</td><td><code>Col CC</code></td><td>GBP/BRL</td></tr><tr><td>9</td><td><code>sql_EURO</code></td><td>fundos_dados_moedas (BRL_B3_2/EUR)</td><td>Consulta</td><td><code>Col CG</code></td><td>EUR/BRL</td></tr><tr><td>10</td><td><code>sql_CNY</code></td><td>FUNDOS_DADOS_INDICES (CNYXBR10)</td><td>Consulta</td><td><code>Col EY</code></td><td>CNY/BRL</td></tr><tr><td>11</td><td><code>sql_CC_EXTERIOR</code></td><td>view_vcrapfdo (vl_total)</td><td>Consulta</td><td><code>Col BP</code></td><td>Caixa exterior</td></tr><tr><td>12</td><td><code>sql_PRFABERTO</code></td><td>view_vcraprf (NTN-B/F, LTN, DEBIN)</td><td>Consulta</td><td><code>Col CN</code></td><td>RF Aberto</td></tr><tr><td>13</td><td><code>sql_swap</code></td><td>view_vcrapswp</td><td>Consulta</td><td><code>Col CS</code></td><td>Swap ativo / passivo</td></tr><tr><td>14</td><td><code>sql_duration</code></td><td>view_vcraprf</td><td>Duration</td><td><code>Col A</code></td><td>Duration RF</td></tr><tr><td>15</td><td><code>sql_indexduration</code></td><td>tbhh3031_anbima_indices</td><td>Duration</td><td><code>Col R</code></td><td>Duration indice ANBIMA</td></tr><tr><td>16</td><td><code>sql_dolarcupomlimpo</code></td><td>fundos_dados_moedas (BRL_B3_CL/USD)</td><td>Consulta</td><td><code>Col DP</code></td><td>USD cupom limpo</td></tr><tr><td>17</td><td><code>sql_cotacoesvsusd</code></td><td>bbg_fx (GBPUSD F150)</td><td>Consulta</td><td><code>Col DU</code></td><td>GBP vs USD</td></tr><tr><td>18</td><td><code>sql_eurousd</code></td><td>bbg_fx (EURUSD F150)</td><td>Consulta</td><td><code>Col DZ</code></td><td>EUR vs USD</td></tr><tr><td>19</td><td><code>proventos</code></td><td>view_vcraprdp (mttp 61,62,69,261)</td><td>Consulta</td><td><code>Col DX</code></td><td>Proventos RV</td></tr><tr><td>20</td><td><code>moedas</code></td><td>bbg_fx (ADU3/CDU3/ECU3/JYU3)</td><td>Moedas</td><td><code>Col AO</code></td><td>Moedas futuros</td></tr><tr><td>21</td><td><code>sql_COTAS_quebradas</code></td><td>view_vcrapfdo (FICAD_CD)</td><td>Consulta</td><td><code>Col EE</code></td><td>Cotas com quebra</td></tr><tr><td>22</td><td><code>sql_FUSION</code></td><td>VieW_FUNDOS_POSICAO (FUSION57691)</td><td>Consulta</td><td><code>Col EI</code></td><td>Fusion Future</td></tr><tr><td>23</td><td><code>consulta_fut</code></td><td>view_vcrapfut (c/ fuvct_cd)</td><td>Rolagens</td><td><code>Col A</code></td><td>Rolagens de futuros</td></tr><tr><td>24</td><td><code>sql_pfdo</code></td><td>view_vcrapfdo (TIPO_CLASSIF)</td><td>Consulta</td><td><code>Col EQ</code></td><td>Posicao FDO</td></tr><tr><td>25</td><td><code>consulta_teva</code></td><td>FUNDOS_COMPOSICAO_INDICES (ITBR_5_PRE)</td><td>Consulta</td><td><code>Col EW</code></td><td>Teva Pre 5</td></tr></tbody></table></div>
+<div class="arrow"></div>
+<div class="group" style="width:820px;border-color:#d4ac0d"><div class="group-title" style="color:#f4d03f">&#x1F9EE; Insercao de formulas (9 formulas)</div><table class="ftable"><thead><tr><th>Intervalo</th><th>Aba</th><th>Formula / Logica</th><th>Proposito</th></tr></thead><tbody><tr><td><code>D3:D</code></td><td>Consulta</td><td><code>=SUMIF(col_H, clcli, col_P)</code></td><td>PL consolidado por fundo</td></tr><tr><td><code>N3:N</code></td><td>Consulta</td><td><code>conv. USD/GBP/CNY -> BRL</code></td><td>Conversao cambial posicoes RV</td></tr><tr><td><code>BJ3:BJ</code></td><td>Consulta</td><td><code>SE DI1 -> qty x NETWORKDAYS(ref, vencto)</code></td><td>Exposicao DU futuros DI</td></tr><tr><td><code>BK3:BK</code></td><td>Consulta</td><td><code>=NETWORKDAYS(ref, vencto, Feriados)</code></td><td>Prazo util ate vencimento</td></tr><tr><td><code>BS3:BS</code></td><td>Consulta</td><td><code>SE 'CAIXA - DOLAR US' -> valor x USD</code></td><td>Caixa dolar em BRL</td></tr><tr><td><code>BT3:BT</code></td><td>Consulta</td><td><code>SE 'CAIXA - LIBRA' -> valor x GBP</code></td><td>Caixa libra em BRL</td></tr><tr><td><code>BU3:BU</code></td><td>Consulta</td><td><code>SE 'C/C-EUR' -> valor x EUR</code></td><td>Caixa euro em BRL</td></tr><tr><td><code>BV3:BV</code></td><td>Consulta</td><td><code>=SUM(BS:BU)</code></td><td>Total caixa exterior em BRL</td></tr><tr><td><code>G3:G</code></td><td>Duration</td><td><code>=qt_total x vl_pu x duration</code></td><td>Exposicao duration ponderada</td></tr></tbody></table></div>
+<div class="arrow"></div>
+<div class="node c-filter" style="width:510px"><div class="bloco-header">&#x1F50D; AutoFilter &mdash; Aba Relatorio</div><div class="bloco-sub">Filtra fundos com desvio de cotizacao relevante</div><div class="bloco-code">Range: <span class="str">A3:AH</span> &nbsp;&middot;&nbsp; Campo: <span class="kw">29</span><br>Criteria1: <span class="str">&quot;&gt;100.1%&quot;</span> &nbsp; Operator: <span class="kw">xlOr</span><br>Criteria2: <span class="str">&quot;&lt;99.99%&quot;</span></div><div class="bloco-detail"><span class="badge badge-purple">Relatorio</span> Destaca fundos fora do intervalo <strong>99.99% &ndash; 100.1%</strong></div></div>
+<div class="arrow"></div>
+<div class="node c-init" style="width:440px"><div class="bloco-header">&#x267B; Restauracao das configuracoes</div><div class="bloco-sub">Reverte estado do Excel para modo normal de uso</div><div class="bloco-code">Application.DisplayAlerts = <span class="kw">True</span><br>Application.ScreenUpdating = <span class="kw">True</span><br>Application.Calculation = <span class="kw">xlCalculationAutomatic</span></div></div>
+<div class="arrow"></div>
+<div class="node oval c-end">&#x25A0; FIM</div>
+    </div>
+    <div class="legend"><div class="legend-item"><div class="legend-dot" style="background:#2471a3"></div>Posicao</div><div class="legend-item"><div class="legend-dot" style="background:#1e8449"></div>Moeda / FX</div><div class="legend-item"><div class="legend-dot" style="background:#b7770d"></div>Duration / ANBIMA</div><div class="legend-item"><div class="legend-dot" style="background:#7d3c98"></div>Renda Variavel / BTC</div><div class="legend-item"><div class="legend-dot" style="background:#148f77"></div>Fundos / Cotas</div><div class="legend-item"><div class="legend-dot" style="background:#a93226"></div>Proventos</div><div class="legend-item"><div class="legend-dot" style="background:#6a5acd"></div>Fusion / Teva</div></div>
+  </div>
+  <div class="todo-col">
+    <div class="todo-panel"><div class="todo-header"><span class="todo-title">&#x1F4CB; To Do</span><span id="todo-counter" class="todo-counter">0/0 concluidos</span></div><div class="todo-progress-wrap"><div id="todo-progress" class="todo-progress-fill" style="width:0%"></div></div><div><div class="todo-section-title">Tarefas</div><div id="todo-list" class="todo-list"></div></div><div class="todo-add"><input id="new-item-input" type="text" class="todo-input" placeholder="Nova tarefa... (Enter para adicionar)"><button onclick="addItem()" class="todo-add-btn" title="Adicionar">+</button></div><div><div class="todo-section-title">&#x1F4DD; Detalhes / Notas</div><textarea id="todo-notes" class="todo-notes" placeholder="Observacoes, contexto ou pendencias detalhadas..."></textarea></div><button onclick="resetTodo()" class="todo-reset-btn">&#x21BA; Restaurar padrao</button></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'todo_load337_v1';
+  var DEFAULT_ITEMS = [{"id": "t1", "text": "Inicializar ambiente VBA (DisplayAlerts OFF, ScreenUpdating OFF, Calc Manual)", "done": true}, {"id": "t2", "text": "Ler data de referencia da planilha PRM!E2 -> dt_planilha", "done": true}, {"id": "t3", "text": "Construir strings de tickers: string_builder, string_builderrv, string_builderCOTAS", "done": true}, {"id": "t4", "text": "Definir as 25 queries SQL no banco dbsx337", "done": true}, {"id": "t5", "text": "Limpar intervalos das abas: Consulta, Duration, Alerta, Moedas, Rolagens", "done": true}, {"id": "t6", "text": "Conectar ao banco via ADODB (Call sSQL_Connect -> dbsx337)", "done": true}, {"id": "t7", "text": "Executar bloco PRV: acoes RV + aluguel BTC via planilha TEMP", "done": true}, {"id": "t8", "text": "Executar as 25 queries e escrever resultados no workbook", "done": true}, {"id": "t9", "text": "Inserir formulas: PL consolidado, cambio, DU, caixa exterior", "done": true}, {"id": "t10", "text": "Aplicar AutoFilter no Relatorio (campo 29, >100.1% ou <99.99%)", "done": true}, {"id": "t11", "text": "Restaurar configuracoes Excel (DisplayAlerts ON, ScreenUpdating ON, Calc Auto)", "done": true}, {"id": "t12", "text": "Validar queries de moedas com novas fontes BBG FX", "done": false}, {"id": "t13", "text": "Testar bloco PRV com fundos FICAD_CD adicionados recentemente", "done": false}, {"id": "t14", "text": "Documentar estrutura das colunas da planilha PRM", "done": false}];
+
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+  function loadState() {
+    try {
+      var s = localStorage.getItem(STORAGE_KEY);
+      if (s) return JSON.parse(s);
+    } catch(e) {}
+    return { items: clone(DEFAULT_ITEMS), notes: '' };
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  var state = loadState();
+
+  function renderTodo() {
+    var list    = document.getElementById('todo-list');
+    var notesEl = document.getElementById('todo-notes');
+    var counter = document.getElementById('todo-counter');
+    var fill    = document.getElementById('todo-progress');
+
+    var done  = state.items.filter(function(i) { return i.done; }).length;
+    var total = state.items.length;
+    if (counter) counter.textContent = done + '/' + total + ' concluidos';
+    if (fill)    fill.style.width = (total ? (done / total * 100) : 0) + '%';
+    if (notesEl && notesEl !== document.activeElement) notesEl.value = state.notes || '';
+
+    if (!list) return;
+    list.innerHTML = '';
+
+    state.items.forEach(function(item, idx) {
+      var div   = document.createElement('div');
+      div.className = 'todo-item' + (item.done ? ' todo-done' : '');
+
+      var label = document.createElement('label');
+      label.className = 'todo-check';
+
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = item.done;
+      (function(i) { cb.addEventListener('change', function() { toggleItem(i); }); })(idx);
+
+      var span = document.createElement('span');
+      span.className = 'todo-text';
+      span.textContent = item.text;
+      (function(i, sp) { sp.addEventListener('dblclick', function() { editItem(i, sp); }); })(idx, span);
+
+      var del = document.createElement('button');
+      del.className = 'todo-del';
+      del.title = 'Remover';
+      del.textContent = 'x';
+      (function(i) { del.addEventListener('click', function() { deleteItem(i); }); })(idx);
+
+      label.appendChild(cb);
+      label.appendChild(span);
+      div.appendChild(label);
+      div.appendChild(del);
+      list.appendChild(div);
+    });
+  }
+
+  function toggleItem(idx) {
+    state.items[idx].done = !state.items[idx].done;
+    saveState(); renderTodo();
+  }
+
+  function deleteItem(idx) {
+    state.items.splice(idx, 1);
+    saveState(); renderTodo();
+  }
+
+  function editItem(idx, spanEl) {
+    var orig = state.items[idx].text;
+    var inp  = document.createElement('input');
+    inp.type = 'text';
+    inp.value = orig;
+    inp.className = 'todo-edit-input';
+    spanEl.replaceWith(inp);
+    inp.focus(); inp.select();
+    var committed = false;
+    function commit() {
+      if (committed) return; committed = true;
+      var v = inp.value.trim();
+      if (v) state.items[idx].text = v;
+      saveState(); renderTodo();
+    }
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter')  commit();
+      if (e.key === 'Escape') { inp.value = orig; commit(); }
+    });
+  }
+
+  window.addItem = function() {
+    var inp  = document.getElementById('new-item-input');
+    if (!inp) return;
+    var text = inp.value.trim();
+    if (!text) return;
+    state.items.push({ id: 'u' + Date.now(), text: text, done: false });
+    inp.value = '';
+    saveState(); renderTodo();
+    var list = document.getElementById('todo-list');
+    if (list) list.scrollTop = list.scrollHeight;
+  };
+
+  window.resetTodo = function() {
+    if (confirm('Restaurar lista padrao? Suas alteracoes serao perdidas.')) {
+      state = { items: clone(DEFAULT_ITEMS), notes: '' };
+      saveState(); renderTodo();
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', function() {
+    renderTodo();
+    var ni = document.getElementById('new-item-input');
+    if (ni) ni.addEventListener('keydown', function(e) { if (e.key === 'Enter') window.addItem(); });
+    var tn = document.getElementById('todo-notes');
+    if (tn) tn.addEventListener('input', function() { state.notes = tn.value; saveState(); });
+  });
+})();
+</script>
+
+</body>
+</html>
