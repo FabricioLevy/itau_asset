@@ -1,11 +1,4 @@
-
-# ─────────────────────────────────────────────
-# consulta_futuro.py
-# ─────────────────────────────────────────────
-
-
 from __future__ import annotations
-
 
 import os
 import pandas as pd
@@ -13,399 +6,360 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.image as mpimg
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from openpyxl.styles import PatternFill, Font
+import openpyxl
+from datetime import date
+import QuantLib as ql
 import sql_connection as sql
 
 
+# ================= CONFIG =================
 
-OUTPUT_DIR   = "../output/rolagem"
-INPUT_FUNDOS = "../input/fundos.txt"
-LOGO_PATH    = "../input/logo.png"
+BASE_OUTPUT   = "../output/rolagem"
+INPUT_FUNDOS  = "../input/fundos.txt"
+INPUT_ROLAGEM = "../input/fundos_rolagem.xlsx"
+LOGO_PATH     = "../input/logo.png"
 
-
-# ── Cores Itaú Asset ──────────────────────────────────────────────────────────
 ITAU_DARK   = "#000D3C"
 ITAU_ORANGE = "#EC7000"
 ITAU_WHITE  = "#ffffff"
-ITAU_LIGHT  = "#f5f5f5"
 ITAU_GRAY   = "#e0e0e0"
-ITAU_GRAY2  = "#aaaaaa"
+ITAU_GRAY2  = "#b3b3b3"
 ITAU_RED    = "#c0392b"
 ITAU_GREEN  = "#1e7e34"
 ROW_PAR     = "#eaf0fb"
 
-
 MES_CODIGO = {
-    1:  "F",  2:  "G",  3:  "H",  4:  "J",
-    5:  "K",  6:  "M",  7:  "N",  8:  "Q",
-    9:  "U",  10: "V",  11: "X",  12: "Z",
+    1: "F", 2: "G", 3: "H", 4: "J",
+    5: "K", 6: "M", 7: "N", 8: "Q",
+    9: "U", 10: "V", 11: "X", 12: "Z",
+}
+
+GRUPO_DOL = {"DOL", "WDO"}
+
+GRUPOS_EXCLUIR = {
+    "DI1",
 }
 
 
-GRUPO_DOL       = {"DOL", "WDO"}
-GRUPO_DOL_LABEL = "FUT DOL + FUT WDO"
+# ================= UTIL =================
 
 
-
-def formatar_vencimento(dt_vencto, ativo: str) -> str:
-    try:
-        dt     = pd.to_datetime(dt_vencto)
-        codigo = MES_CODIGO[dt.month]
-        ano    = str(dt.year)[-2:]
-        return f"{codigo}{ano}"
-    except Exception:
-        return ""
+def output_dir_for_date(dt):
+    return os.path.join(BASE_OUTPUT, pd.to_datetime(dt).strftime("%Y%m%d"))
 
 
-
-def normalizar_ativo(ativo: str) -> str:
-    return ativo.replace("FUT ", "").strip()
-
-
-
-def eh_grupo_dol(ativo: str) -> bool:
-    return normalizar_ativo(ativo) in GRUPO_DOL
+def formatar_vencimento(dt):
+    dt = pd.to_datetime(dt)
+    return f"{MES_CODIGO[dt.month]}{str(dt.year)[-2:]}"
 
 
+def normalizar_ativo(a):
+    return str(a).replace("FUT ", "").strip()
 
-def ler_fundos() -> list:
+
+def eh_grupo_dol(a):
+    return normalizar_ativo(a) in GRUPO_DOL
+
+
+def ler_fundos():
     if not os.path.exists(INPUT_FUNDOS):
-        print(f"Aviso: {INPUT_FUNDOS} nao encontrado - sem filtro.")
         return []
-    with open(INPUT_FUNDOS, "r", encoding="utf-8") as f:
-        fundos = [l.strip() for l in f
-                  if l.strip() and not l.strip().startswith("#")]
-    print(f"  {len(fundos)} fundo(s) carregado(s) de {INPUT_FUNDOS}")
-    return fundos
+    with open(INPUT_FUNDOS) as f:
+        return [l.strip() for l in f if l.strip()]
 
 
+# ================= SQL =================
 
-def consulta_futuro(dt: str, fundos: list):
-    filtro = (f"AND clcli_cd IN ({', '.join([chr(39)+f+chr(39) for f in fundos])})"
-              if fundos else "")
-    query_fut = f"""
-        SELECT clcli_cd, qt,
-               qt * vl_varponto * vl_precomerc AS Notional,
-               dt_vencto, fuvct_fuatv_cd,
-               vl_precomerc * vl_varponto AS Cotacao
-        FROM   dbsx337.dbo.view_vcrapfut WITH (NOLOCK)
-        WHERE  dt = '{dt}' {filtro}
-        ORDER  BY clcli_cd, fuvct_fuatv_cd, fuvct_cd
+
+def consulta_futuro(dt, fundos):
+    filtro = (
+        f"AND clcli_cd IN ({','.join([repr(f) for f in fundos])})"
+        if fundos else ""
+    )
+
+    q_fut = f"""
+        SELECT clcli_cd,
+               ISNULL(qt,0)*ISNULL(vl_varponto,0)*ISNULL(vl_precomerc,0) AS Notional,
+               dt_vencto,
+               fuvct_fuatv_cd
+        FROM dbsx337.dbo.view_vcrapfut WITH(NOLOCK)
+        WHERE dt='{dt}' {filtro}
     """
-    query_pl = f"""
+
+    q_pl = f"""
         SELECT clcli_cd, vl_patrliqtot1 AS PL
-        FROM   dbsx337.dbo.view_vcraplsi WITH (NOLOCK)
-        WHERE  dt = '{dt}' {filtro}
+        FROM dbsx337.dbo.view_vcraplsi WITH(NOLOCK)
+        WHERE dt='{dt}' {filtro}
     """
-    db     = sql.get_connection()
-    df_fut = db.run_query(query_fut)
-    df_pl  = db.run_query(query_pl)
-    return df_fut, df_pl
+
+    db = sql.get_connection()
+    return db.run_query(q_fut), db.run_query(q_pl)
 
 
+# ================= CORE =================
 
-def processar_grupo(df_fut: pd.DataFrame, df_pl: pd.DataFrame,
-                    dt: str, grupo: str) -> tuple:
 
-    hoje       = pd.to_datetime(dt)
-    inicio_mes = hoje.replace(day=1)
-
-    df = df_fut[df_fut["dt_vencto"] >= inicio_mes].copy()
-
+def processar_grupo(df_fut, df_pl, grupo):
     if grupo == "DOL_WDO":
-        df = df[df["fuvct_fuatv_cd"].apply(eh_grupo_dol)].copy()
-        label_futuro = GRUPO_DOL_LABEL
+        df = df_fut[df_fut["fuvct_fuatv_cd"].apply(eh_grupo_dol)].copy()
+        label = "FUT DOL + WDO"
     else:
-        df = df[df["fuvct_fuatv_cd"].apply(normalizar_ativo) == grupo].copy()
-        label_futuro = f"FUT {grupo}"
-
-    df = df[(df["Notional"] != 0) & df["Notional"].notna()].copy()
+        df = df_fut[df_fut["fuvct_fuatv_cd"].apply(normalizar_ativo) == grupo].copy()
+        label = f"FUT {grupo}"
 
     if df.empty:
-        return pd.DataFrame(), [], label_futuro
+        return pd.DataFrame(), [], label
 
-    proximos = sorted(df["vencimento"].unique())[:2]
-    if len(proximos) < 2:
-        print(f"  [{grupo}] Menos de 2 vencimentos encontrados.")
-        return pd.DataFrame(), [], label_futuro
+    vencimentos = sorted(df["vencimento"].dropna().unique())
 
-    v1, v2 = proximos[0], proximos[1]
-    print(f"  [{grupo}] Vencimentos: {v1} | {v2}")
+    if not vencimentos:
+        return pd.DataFrame(), [], label
 
-    df_grp = (df.groupby(["clcli_cd", "vencimento"])["Notional"]
-              .sum().reset_index())
-    df_grp = df_grp[df_grp["Notional"] != 0].copy()
+    v1 = vencimentos[0]
+    v2 = None
 
-    tot_fundo = (df_grp.groupby("clcli_cd")["Notional"]
-                 .sum().reset_index()
-                 .rename(columns={"Notional": "total_fut"}))
+    for v in vencimentos:
+        if v > v1:
+            v2 = v
+            break
 
-    not_v1 = (df_grp[df_grp["vencimento"] == v1]
-              .groupby("clcli_cd")["Notional"].sum()
-              .reset_index().rename(columns={"Notional": f"not_{v1}"}))
+    if v2 is None and len(vencimentos) >= 2:
+        v2 = v1
+        v1 = vencimentos[-2]
 
-    not_v2 = (df_grp[df_grp["vencimento"] == v2]
-              .groupby("clcli_cd")["Notional"].sum()
-              .reset_index().rename(columns={"Notional": f"not_{v2}"}))
+    if v2 is None:
+        return pd.DataFrame(), [v1], label
 
-    df_tab = (df_pl
-              .merge(tot_fundo, on="clcli_cd", how="inner")
-              .merge(not_v1,    on="clcli_cd", how="left")
-              .merge(not_v2,    on="clcli_cd", how="left"))
+    print(f"    [{grupo}] {v1} >> {v2}")
 
-    df_tab[f"not_{v1}"] = df_tab[f"not_{v1}"].fillna(0)
-    df_tab[f"not_{v2}"] = df_tab[f"not_{v2}"].fillna(0)
+    df = df[df["vencimento"].isin([v1, v2])]
 
-    df_tab = df_tab[
-        (df_tab[f"not_{v1}"] != 0) | (df_tab[f"not_{v2}"] != 0)
-    ].copy()
+    df_grp = df.groupby(["clcli_cd", "vencimento"])["Notional"].sum().reset_index()
+
+    total = df_grp.groupby("clcli_cd")["Notional"].sum().reset_index()
+    total.rename(columns={"Notional": "total_fut"}, inplace=True)
+
+    df_tab = df_pl.merge(total, on="clcli_cd", how="inner")
+
+    n1 = df_grp[df_grp.vencimento == v1].groupby("clcli_cd")["Notional"].sum().reset_index()
+    n2 = df_grp[df_grp.vencimento == v2].groupby("clcli_cd")["Notional"].sum().reset_index()
+
+    n1.rename(columns={"Notional": "not_v1"}, inplace=True)
+    n2.rename(columns={"Notional": "not_v2"}, inplace=True)
+
+    df_tab = df_tab.merge(n1, on="clcli_cd", how="left")
+    df_tab = df_tab.merge(n2, on="clcli_cd", how="left")
+
+    df_tab = df_tab.fillna(0)
+    df_tab = df_tab[(df_tab["not_v1"] != 0) | (df_tab["not_v2"] != 0)]
 
     if df_tab.empty:
-        return pd.DataFrame(), [], label_futuro
+        return pd.DataFrame(), [], label
 
-    df_tab["FUTURO"] = label_futuro
+    df_tab["FUTURO"] = label
 
-    df_tab[f"Posicao {v1} % PL"]      = df_tab[f"not_{v1}"] / df_tab["PL"]
-    df_tab[f"Posicao {v2} % PL"]      = df_tab[f"not_{v2}"] / df_tab["PL"]
-    df_tab[f"{v1} % do total de FUT"] = df_tab[f"not_{v1}"] / df_tab["total_fut"]
-    df_tab[f"{v2} % do total de FUT"] = df_tab[f"not_{v2}"] / df_tab["total_fut"]
+    df_tab[f"Pos {v1} % PL"] = df_tab["not_v1"] / df_tab["PL"]
+    df_tab[f"Pos {v2} % PL"] = df_tab["not_v2"] / df_tab["PL"]
+
+    df_tab[f"{v1} % FUT"] = df_tab["not_v1"] / df_tab["total_fut"]
+    df_tab[f"{v2} % FUT"] = df_tab["not_v2"] / df_tab["total_fut"]
 
     df_out = df_tab[[
         "clcli_cd", "PL", "FUTURO",
-        f"Posicao {v1} % PL",
-        f"Posicao {v2} % PL",
-        f"{v1} % do total de FUT",
-        f"{v2} % do total de FUT",
+        f"Pos {v1} % PL",
+        f"Pos {v2} % PL",
+        f"{v1} % FUT",
+        f"{v2} % FUT",
     ]].rename(columns={"clcli_cd": "FUNDO"})
 
-    return df_out, [v1, v2], label_futuro
+    return df_out, [v1, v2], label
 
 
+# ================= EXCEL (DADOS) =================
 
-def gerar_imagem(df: pd.DataFrame, grupo: str, label_futuro: str,
-                 vencimentos: list, dt: str) -> None:
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+def gerar_excel_dados(resultados, dt, outdir):
+    caminho = os.path.join(outdir, f"rolagem_{dt}.xlsx")
 
-    if df.empty:
-        print(f"  Nenhum dado para {label_futuro}")
-        return
+    with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
+        for grupo, df in resultados:
+            nome_aba = grupo[:31]
+            df_copy = df.copy().sort_values("FUNDO")
 
-    v1, v2 = vencimentos[0], vencimentos[1]
-    dt_fmt  = pd.to_datetime(dt).strftime("%d/%m/%Y")
+            df_copy.to_excel(writer, sheet_name=nome_aba, index=False)
+
+            ws = writer.sheets[nome_aba]
+
+            for cell in ws[1]:
+                cell.fill = openpyxl.styles.PatternFill("solid", fgColor="000D3C")
+                cell.font = openpyxl.styles.Font(color="FFFFFF", bold=True)
+
+            for row in ws.iter_rows(min_row=2):
+                for cell in row:
+                    col_name = ws.cell(row=1, column=cell.column).value
+
+                    if cell.row % 2 == 0:
+                        cell.fill = openpyxl.styles.PatternFill("solid", fgColor="EAF0FB")
+
+                    if col_name == "PL":
+                        cell.number_format = '"R$"#,##0.00'
+
+                    if "%" in col_name:
+                        cell.number_format = "0.00%"
+                        try:
+                            if cell.value is not None:
+                                if cell.value < 0:
+                                    cell.font = openpyxl.styles.Font(color="C0392B", bold=True)
+                                elif cell.value > 0:
+                                    cell.font = openpyxl.styles.Font(color="1E7E34", bold=True)
+                        except Exception:
+                            pass
+
+            for col in ws.columns:
+                max_len = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = max_len + 2
+
+    print(f"[OK] Excel formatado: {caminho}")
+    return caminho
+
+
+# ================= IMAGEM =================
+
+
+def gerar_imagem(df, grupo, label, vcts, dt, outdir, mostrar_logo=False, mostrar_titulo=False):
+    os.makedirs(outdir, exist_ok=True)
 
     df_disp = df.copy()
-    df_disp["PL"] = df_disp["PL"].apply(lambda x: f"R$ {x:,.2f}")
-    for c in [c for c in df_disp.columns if "%" in c]:
-        df_disp[c] = df_disp[c].apply(lambda x: f"{x:.2%}")
+    df_disp["PL"] = df_disp["PL"].map(lambda x: f"R$ {x:,.2f}")
 
-    colunas = [
-        "FUNDO", "PL", "FUTURO",
-        f"Posicao {v1} % PL",
-        f"Posicao {v2} % PL",
-        f"{v1} % do total de FUT",
-        f"{v2} % do total de FUT",
-    ]
+    for c in df_disp.columns:
+        if "%" in c:
+            df_disp[c] = df_disp[c].map(lambda x: f"{x:.2%}")
 
-    n_rows = len(df_disp)
-    n_cols = len(colunas)
+    colunas = df_disp.columns.tolist()
 
-    fig_w  = max(20, n_cols * 2.8)
-    fig_h  = 2.6 + n_rows * 0.60 + 0.7
-    fig    = plt.figure(figsize=(fig_w, fig_h), facecolor=ITAU_WHITE)
+    fig = plt.figure(figsize=(25, 3 + len(df) * 0.6))
+    gs = gridspec.GridSpec(4, 1, height_ratios=[1, 1.5, len(df) * 0.6, 0.3])
 
-    # GridSpec largura total — sem barra lateral
-    gs = gridspec.GridSpec(
-        4, 1,
-        figure        = fig,
-        height_ratios = [0.85, 1.3, n_rows * 0.60 + 0.4, 0.45],
-        hspace        = 0,
-        left=0.0, right=1.0,
-    )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # BARRA DO TOPO — azul, espessa, largura total; logo a direita alinhado
-    # ─────────────────────────────────────────────────────────────────────────
+    # HEADER
     ax_b = fig.add_subplot(gs[0])
     ax_b.set_facecolor(ITAU_DARK)
     ax_b.axis("off")
-    ax_b.set_xlim(0, 1)
-    ax_b.set_ylim(0, 1)
 
-    ax_b.text(0.018, 0.55,
-              "Itau Asset Management",
-              transform  = ax_b.transAxes,
-              fontsize   = 12, fontweight="bold",
-              color      = ITAU_WHITE,
-              va="center", ha="left",
-              fontfamily = "DejaVu Sans")
+    if mostrar_logo and os.path.exists(LOGO_PATH):
+        ax_logo = inset_axes(ax_b, width="10%", height="80%", loc="center right")
+        ax_logo.imshow(mpimg.imread(LOGO_PATH))
+        ax_logo.axis("off")
 
-    # Logo a direita da barra azul, alinhado com a borda direita da tabela
-    if os.path.exists(LOGO_PATH):
-        try:
-            logo_img = mpimg.imread(LOGO_PATH)
-            ax_logo  = inset_axes(
-                ax_b,
-                width          = "9%",
-                height         = "78%",
-                loc            = "center right",
-                bbox_to_anchor = (0.0, 0.0, 0.988, 1.0),
-                bbox_transform = ax_b.transAxes,
-                borderpad      = 0,
-            )
-            ax_logo.imshow(logo_img)
-            ax_logo.axis("off")
-        except Exception as e:
-            print(f"  Logo nao carregado: {e}")
+        ax_b.text(
+            0.85, 0.5, "Itaú Asset",
+            fontsize=18,
+            fontweight="bold",
+            color=ITAU_GRAY2,
+            va="center",
+            ha="left",
+        )
 
-    # Linha laranja na base da barra azul
-    ax_b.axhline(y=0.07, xmin=0.0, xmax=1.0,
-                 color=ITAU_ORANGE, linewidth=3.0)
+    ax_b.axhline(y=0.05, color=ITAU_ORANGE)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # FAIXA DE TITULO — fundo branco
-    # ─────────────────────────────────────────────────────────────────────────
-    ax_h = fig.add_subplot(gs[1])
-    ax_h.set_facecolor(ITAU_WHITE)
-    ax_h.axis("off")
-    ax_h.set_xlim(0, 1)
-    ax_h.set_ylim(0, 1)
+    # TITLE
+    ax = fig.add_subplot(gs[1])
+    ax.axis("off")
 
-    ax_h.text(0.018, 0.68,
-              "RELATORIO DE ROLAGEM",
-              transform  = ax_h.transAxes,
-              fontsize   = 15, fontweight="bold",
-              color      = ITAU_DARK,
-              va="center", ha="left")
+    dt_fmt = pd.to_datetime(dt).strftime("%d/%m/%Y")
+    titulo_venc = f"{vcts[0]} >> {vcts[1]}"
 
-    ax_h.text(0.018, 0.30,
-              label_futuro,
-              transform = ax_h.transAxes,
-              fontsize  = 11, color=ITAU_ORANGE,
-              va="center", ha="left")
+    if mostrar_titulo:
+        ax.text(0.02, 0.8, "Relatorio de Rolagem", fontsize=24, weight="bold")
+    ax.text(0.02, 0.3, label, color=ITAU_ORANGE, fontsize=18)
+    ax.text(0.98, 0.8, f"Data: {dt_fmt}", ha="right")
+    ax.text(0.98, 0.3, titulo_venc, ha="right")
 
-    ax_h.text(0.988, 0.68,
-              f"Data Ref:  {dt_fmt}",
-              transform = ax_h.transAxes,
-              fontsize  = 9, color=ITAU_DARK,
-              va="center", ha="right")
+    # TABLE
+    ax = fig.add_subplot(gs[2])
+    ax.axis("off")
 
-    ax_h.text(0.988, 0.30,
-              f"Vencimentos:  {v1}  ->  {v2}",
-              transform = ax_h.transAxes,
-              fontsize  = 9, color=ITAU_GRAY2,
-              va="center", ha="right")
-
-    # Separador azul entre cabecalho e tabela
-    ax_h.axhline(y=0.05, xmin=0.0, xmax=1.0,
-                 color=ITAU_DARK, linewidth=2.5)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # TABELA
-    # ─────────────────────────────────────────────────────────────────────────
-    ax_t = fig.add_subplot(gs[2])
-    ax_t.set_facecolor(ITAU_WHITE)
-    ax_t.axis("off")
-
-    col_widths = [0.17, 0.16, 0.17, 0.125, 0.125, 0.115, 0.115]
-
-    tbl = ax_t.table(
-        cellText  = df_disp[colunas].values,
-        colLabels = colunas,
-        cellLoc   = "center",
-        loc       = "center",
-        colWidths = col_widths,
-    )
+    tbl = ax.table(cellText=df_disp.values, colLabels=colunas, loc="center", cellLoc="center")
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(9)
-    tbl.scale(1, 2.2)
+    tbl.set_fontsize(11)
+    tbl.scale(1, 2)
 
-    for col_idx in range(n_cols):
-        cell = tbl[0, col_idx]
-        cell.set_facecolor(ITAU_DARK)
-        cell.set_text_props(color=ITAU_WHITE, fontweight="bold", fontsize=8.5)
-        cell.set_edgecolor(ITAU_WHITE)
-        cell.set_linewidth(0.8)
-
-    for row_idx in range(1, n_rows + 1):
-        bg = ROW_PAR if row_idx % 2 == 0 else ITAU_WHITE
-        for col_idx in range(n_cols):
-            cell = tbl[row_idx, col_idx]
+    for (r, c), cell in tbl.get_celld().items():
+        if r == 0:
+            cell.set_facecolor(ITAU_DARK)
+            cell.set_text_props(color="white", weight="bold")
+        else:
+            bg = ROW_PAR if r % 2 == 0 else ITAU_WHITE
             cell.set_facecolor(bg)
-            cell.set_edgecolor(ITAU_GRAY)
-            cell.set_linewidth(0.5)
 
-            if "% PL" in colunas[col_idx]:
-                val_str = df_disp[colunas].values[row_idx - 1][col_idx]
-                try:
-                    val = float(val_str.replace("%", "").replace(",", "."))
-                    if val < 0:
-                        cell.set_facecolor("#fde8e8")
-                        cell.set_text_props(color=ITAU_RED, fontweight="bold")
-                    elif val > 0:
-                        cell.set_facecolor("#e8f5e9")
-                        cell.set_text_props(color=ITAU_GREEN, fontweight="bold")
-                except Exception:
-                    pass
+            if "%" in colunas[c]:
+                val = df.iloc[r - 1][colunas[c]]
+                if val < 0:
+                    cell.set_text_props(color=ITAU_RED, weight="bold")
+                elif val > 0:
+                    cell.set_text_props(color=ITAU_GREEN, weight="bold")
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # RODAPE
-    # ─────────────────────────────────────────────────────────────────────────
-    ax_f = fig.add_subplot(gs[3])
-    ax_f.set_facecolor(ITAU_WHITE)
-    ax_f.axis("off")
-    ax_f.set_xlim(0, 1)
-    ax_f.set_ylim(0, 1)
-
-    ax_f.axhline(y=0.95, xmin=0.0, xmax=1.0,
-                 color=ITAU_DARK, linewidth=1.5)
-
-    ax_f.text(0.5, 0.38,
-              "* Posicao % PL = Notional do vencimento / PL do fundo   |   "
-              "% do total de FUT = Notional do vencimento / Notional total de futuros",
-              transform = ax_f.transAxes,
-              fontsize  = 7, color=ITAU_GRAY2,
-              ha="center", va="center", style="italic")
-
-    # ── Salva ─────────────────────────────────────────────────────────────────
-    nome = f"{OUTPUT_DIR}/rolagem_{grupo}_{dt}.png"
-    plt.savefig(nome, dpi=150, bbox_inches="tight",
-                facecolor=ITAU_WHITE, edgecolor="none")
+    nome = os.path.join(outdir, f"rolagem_{grupo}_{dt}.png")
+    plt.savefig(nome, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"  [OK] Imagem salva: {nome}")
 
 
+# ================= MAIN =================
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    dt = ql.Brazil().advance(
+        ql.Date.from_date(date.today()),
+        ql.Period('-1d')
+    ).to_date().strftime('%Y-%m-%d')
+
+    print(dt)
+
+    out_dir = output_dir_for_date(dt)
+    fundos = ler_fundos()
+
+    df_fut, df_pl = consulta_futuro(dt, fundos)
+
+    df_fut["dt_vencto"] = pd.to_datetime(df_fut["dt_vencto"])
+    df_fut["vencimento"] = df_fut["dt_vencto"].apply(formatar_vencimento)
+
+    ano_ref = pd.to_datetime(dt).strftime("%y")
+    df_fut = df_fut[df_fut["vencimento"].str.endswith(ano_ref)]
+
+    ativos = df_fut["fuvct_fuatv_cd"].apply(normalizar_ativo).unique()
+    grupos_set = set(["DOL_WDO"] + [a for a in ativos if a not in GRUPO_DOL]) - GRUPOS_EXCLUIR
+
+    try:
+        abas = pd.ExcelFile(INPUT_ROLAGEM).sheet_names
+        grupos = [a for a in abas if a in grupos_set]
+        grupos += sorted([g for g in grupos_set if g not in abas])
+    except Exception:
+        grupos = ["DOL_WDO"] + sorted([a for a in ativos if a not in GRUPO_DOL])
+
+    # DOL_WDO sempre primeiro para garantir que o titulo "Relatorio de Rolagem" apareca no inicio
+    if "DOL_WDO" in grupos:
+        grupos.remove("DOL_WDO")
+        grupos.insert(0, "DOL_WDO")
+
+    resultados = []
+    primeiro = True
+
+    for g in grupos:
+        df_res, vcts, label = processar_grupo(df_fut, df_pl, g)
+
+        if df_res.empty:
+            continue
+
+        resultados.append((g, df_res))
+
+        gerar_imagem(df_res, g, label, vcts, dt, out_dir,
+                     mostrar_logo=primeiro, mostrar_titulo=primeiro)
+
+        primeiro = False
+
+    gerar_excel_dados(resultados, dt, out_dir)
 
 
 if __name__ == "__main__":
-    dt = "2026-05-27"
-
-    fundos = ler_fundos()
-
-    print("Conectando ao banco...")
-    df_fut, df_pl = consulta_futuro(dt, fundos)
-
-    df_fut["dt_vencto"]  = pd.to_datetime(df_fut["dt_vencto"])
-    df_fut["vencimento"] = df_fut.apply(
-        lambda r: formatar_vencimento(r["dt_vencto"], r["fuvct_fuatv_cd"]), axis=1
-    )
-
-    ativos_norm = df_fut["fuvct_fuatv_cd"].apply(normalizar_ativo).unique().tolist()
-    grupos      = ["DOL_WDO"] + [a for a in ativos_norm if a not in GRUPO_DOL]
-    grupos      = list(dict.fromkeys(grupos))
-
-    print(f"\nGrupos: {grupos}\n")
-
-    gerados = 0
-    for grupo in grupos:
-        df_result, vencimentos, label_futuro = processar_grupo(
-            df_fut, df_pl, dt, grupo
-        )
-        if df_result.empty:
-            print(f"  [SKIP] {grupo} - sem dados\n")
-            continue
-        gerar_imagem(df_result, grupo, label_futuro, vencimentos, dt)
-        gerados += 1
-
-    print(f"\nConcluido - {gerados} imagem(ns) gerada(s).")
+    main()
