@@ -44,7 +44,7 @@ GRUPOS_EXCLUIR = {
 
 # ================= UTIL =================
 
-
+ 
 def output_dir_for_date(dt):
     return os.path.join(BASE_OUTPUT, pd.to_datetime(dt).strftime("%Y%m%d"))
 
@@ -335,9 +335,12 @@ def main():
         grupos = [a for a in abas if a in grupos_set]
         grupos += sorted([g for g in grupos_set if g not in abas])
     except Exception:
-        grupos = ["DOL_WDO"] + sorted([a for a in ativos if a not in GRUPO_DOL])
+        grupos = ["DOL_WDO"] + sorted([
+            a for a in ativos
+            if a not in GRUPO_DOL and a not in GRUPOS_EXCLUIR
+        ])
 
-    # DOL_WDO sempre primeiro para garantir que o titulo "Relatorio de Rolagem" apareca no inicio
+    # DOL_WDO sempre primeiro para garantir que o titulo "Relatório de Rolagens" apareca no inicio
     if "DOL_WDO" in grupos:
         grupos.remove("DOL_WDO")
         grupos.insert(0, "DOL_WDO")
@@ -346,6 +349,9 @@ def main():
     primeiro = True
 
     for g in grupos:
+        if g in GRUPOS_EXCLUIR:
+            continue
+
         df_res, vcts, label = processar_grupo(df_fut, df_pl, g)
 
         if df_res.empty:
