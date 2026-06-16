@@ -271,7 +271,7 @@ def gerar_imagem(df, grupo, label, vcts, dt, outdir, mostrar_logo=False, mostrar
     titulo_venc = f"{vcts[0]} >> {vcts[1]}"
 
     if mostrar_titulo:
-        ax.text(0.02, 0.8, "Relatorio de Rolagem", fontsize=24, weight="bold")
+        ax.text(0.02, 0.8, "Relatório de Rolagens", fontsize=24, weight="bold")
     ax.text(0.02, 0.3, label, color=ITAU_ORANGE, fontsize=18)
     ax.text(0.98, 0.8, f"Data: {dt_fmt}", ha="right")
     ax.text(0.98, 0.3, titulo_venc, ha="right")
