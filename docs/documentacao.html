@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentação — exposicao_html.py</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --dark:   #000D3C;
+      --orange: #EC7000;
+      --gray:   #e0e0e0;
+      --gray2:  #6b7280;
+      --bg:     #f3f4f8;
+      --white:  #ffffff;
+      --sidebar-w: 270px;
+    }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--bg);
+      color: #1a1a2e;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--dark);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-brand {
+      padding: 24px 20px 16px;
+      border-bottom: 3px solid var(--orange);
+    }
+    .sidebar-brand h2 {
+      color: #fff;
+      font-size: .95rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .sidebar-brand p {
+      color: var(--gray2);
+      font-size: .75rem;
+      margin-top: 4px;
+    }
+    .sidebar nav { padding: 16px 0; flex: 1; }
+    .nav-section {
+      padding: 6px 20px 4px;
+      font-size: .68rem;
+      font-weight: 700;
+      color: var(--orange);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .nav-link {
+      display: block;
+      padding: 8px 20px 8px 28px;
+      color: #b0b8d0;
+      font-size: .82rem;
+      text-decoration: none;
+      border-left: 3px solid transparent;
+      transition: all .15s;
+      cursor: pointer;
+    }
+    .nav-link:hover  { color: #fff; background: rgba(255,255,255,.06); }
+    .nav-link.active { color: #fff; border-left-color: var(--orange); background: rgba(236,112,0,.12); }
+    .nav-sub {
+      padding: 4px 20px 4px 44px;
+      color: #6b7a99;
+      font-size: .76rem;
+      cursor: pointer;
+      transition: color .15s;
+    }
+    .nav-sub:hover { color: #b0b8d0; }
+
+    /* ── Main ── */
+    .main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar {
+      background: var(--dark);
+      padding: 16px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 3px solid var(--orange);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .topbar h1 { color: #fff; font-size: 1rem; font-weight: 700; letter-spacing: .06em; }
+    .topbar span { color: var(--gray2); font-size: .8rem; }
+
+    .content { padding: 36px 48px 60px; max-width: 960px; }
+
+    /* ── Sections ── */
+    .doc-section { display: none; }
+    .doc-section.active { display: block; }
+
+    /* ── Markdown styles ── */
+    .doc-section h1 {
+      font-size: 1.5rem; font-weight: 700; color: var(--dark);
+      border-bottom: 3px solid var(--orange);
+      padding-bottom: 10px; margin-bottom: 20px; margin-top: 32px;
+    }
+    .doc-section h1:first-child { margin-top: 0; }
+    .doc-section h2 {
+      font-size: 1.1rem; font-weight: 700; color: var(--dark);
+      margin: 28px 0 12px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--gray);
+    }
+    .doc-section h3 {
+      font-size: .95rem; font-weight: 700; color: var(--orange);
+      margin: 20px 0 8px;
+    }
+    .doc-section p  { line-height: 1.7; margin-bottom: 14px; font-size: .88rem; }
+    .doc-section ul, .doc-section ol { margin: 0 0 14px 20px; font-size: .88rem; line-height: 1.7; }
+    .doc-section li { margin-bottom: 4px; }
+    .doc-section strong { color: var(--dark); }
+    .doc-section hr { border: none; border-top: 1px solid var(--gray); margin: 24px 0; }
+    .doc-section a { color: var(--orange); text-decoration: none; }
+    .doc-section a:hover { text-decoration: underline; }
+
+    .doc-section table {
+      border-collapse: collapse; width: 100%; margin-bottom: 20px;
+      font-size: .84rem; border-radius: 8px; overflow: hidden;
+      box-shadow: 0 1px 8px rgba(0,0,0,.08);
+    }
+    .doc-section thead tr { background: var(--dark); }
+    .doc-section th {
+      color: #fff; font-weight: 600; padding: 10px 14px;
+      text-align: left; white-space: nowrap;
+    }
+    .doc-section td {
+      padding: 9px 14px; border-bottom: 1px solid var(--gray);
+      background: #fff;
+    }
+    .doc-section tbody tr:nth-child(even) td { background: #f0f4ff; }
+
+    .doc-section code {
+      background: #eef1f8; border-radius: 4px;
+      padding: 2px 6px; font-size: .82rem; font-family: 'Consolas', monospace;
+      color: #c0392b;
+    }
+    .doc-section pre {
+      background: #1e2235; border-radius: 8px; padding: 18px 20px;
+      overflow-x: auto; margin-bottom: 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.15);
+    }
+    .doc-section pre code {
+      background: none; color: #e0e6ff; padding: 0;
+      font-size: .82rem; line-height: 1.6;
+    }
+
+    /* ── Mermaid ── */
+    .mermaid {
+      background: #fff; border-radius: 10px; padding: 24px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.10); margin-bottom: 20px;
+      text-align: center; overflow-x: auto;
+    }
+
+    /* ── Badge de arquivo ── */
+    .file-badge {
+      display: inline-block; background: var(--dark); color: #fff;
+      font-size: .75rem; font-family: 'Consolas', monospace;
+      padding: 4px 12px; border-radius: 20px; margin-bottom: 20px;
+      border-left: 3px solid var(--orange);
+    }
+
+    /* ── Footer ── */
+    .footer {
+      background: #fff; border-top: 3px solid var(--dark);
+      padding: 14px 48px; font-size: .75rem; color: var(--gray2);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <h2>Itaú Asset — Docs</h2>
+    <p>exposicao_html.py</p>
+  </div>
+  <nav>
+    <div class="nav-section">Visão Geral</div>
+    <a class="nav-link active" onclick="show('visao-geral')">Visão Geral & Fluxo</a>
+    <div class="nav-sub" onclick="show('visao-geral')">Diagrama Mermaid</div>
+    <div class="nav-sub" onclick="show('visao-geral')">Entradas & Saídas</div>
+
+    <div class="nav-section" style="margin-top:12px">Módulos</div>
+    <a class="nav-link" onclick="show('dados')">Consultas SQL</a>
+    <div class="nav-sub" onclick="show('dados')">FX · PL · PRV</div>
+    <div class="nav-sub" onclick="show('dados')">Futuros · Cotas · Proventos</div>
+
+    <a class="nav-link" onclick="show('calculos')">Cálculos de Exposição</a>
+    <div class="nav-sub" onclick="show('calculos')">montar_tabela</div>
+    <div class="nav-sub" onclick="show('calculos')">S&amp;P500 · Offshores · Banda</div>
+
+    <a class="nav-link" onclick="show('outputs')">Geração de Relatórios</a>
+    <div class="nav-sub" onclick="show('outputs')">HTML · Excel · PNG · PDF</div>
+    <div class="nav-sub" onclick="show('outputs')">Índice histórico</div>
+
+    <a class="nav-link" onclick="show('rolagem')">Rolagem & Beta</a>
+    <div class="nav-sub" onclick="show('rolagem')">v1 → v2 por família</div>
+    <div class="nav-sub" onclick="show('rolagem')">INTRA · BETA_ATIVOS</div>
+  </nav>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <h1>DOCUMENTAÇÃO TÉCNICA</h1>
+    <span>src/exposicao_html.py</span>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ VISÃO GERAL ══ -->
+    <div id="visao-geral" class="doc-section active"></div>
+
+    <!-- ══ DADOS ══ -->
+    <div id="dados" class="doc-section"></div>
+
+    <!-- ══ CÁLCULOS ══ -->
+    <div id="calculos" class="doc-section"></div>
+
+    <!-- ══ OUTPUTS ══ -->
+    <div id="outputs" class="doc-section"></div>
+
+    <!-- ══ ROLAGEM ══ -->
+    <div id="rolagem" class="doc-section"></div>
+
+  </div>
+
+  <div class="footer">Itaú Asset Management — Documentação gerada automaticamente a partir dos arquivos .md</div>
+</div>
+
+<script>
+// ── Conteúdo Markdown ────────────────────────────────────────────────────────
+
+const DOCS = {
+
+"visao-geral": `
+# exposicao_html.py — Visão Geral
+
+**Arquivo:** \`src/exposicao_html.py\`
+**Propósito:** Gera o Relatório de Exposição diário dos fundos da Itaú Asset — PNG, Excel, HTML interativo, PDF e índice histórico.
+
+---
+
+## Fluxo principal (\`main\`)
+
+\`\`\`
+python exposicao_html.py [n_dias]
+\`\`\`
+
+1. Calcula as datas úteis (QuantLib Brasil) retroativas a partir de hoje
+2. Lê o Excel de configuração (\`../input/fundos_exposicao.xlsx\`)
+3. Para cada data:
+   - Consulta SQL: FX → PL → PRV → Futuros → Cotas → Proventos → PIBB/SPXI → Fut S&P/USD → Rolagem
+   - Monta tabelas por aba
+   - Exporta: Excel → HTML → PDF → PDF Rolagem → Excel Rolagem
+4. Gera o \`index.html\` com calendário histórico
+
+---
+
+## Diagrama de fluxo
+
+\`\`\`mermaid
+flowchart TD
+    A([python exposicao_html.py n_dias]) --> B[QuantLib: calcular datas úteis]
+    B --> C[ler_exposicao_excel\\nfundos_exposicao.xlsx]
+    C --> LOOP
+
+    subgraph LOOP["Loop por data"]
+        direction TB
+
+        subgraph SQL["Consultas SQL — dbsx337"]
+            direction LR
+            FX[buscar_fx\\nUSD · GBP · EUR · CNY]
+            PL[buscar_pl\\nview_vcraplsi]
+            PRV[buscar_prv\\nVIEW_vcraprv\\n+ BTC + moeda]
+            FUT[buscar_futuro\\nview_vcrapfut\\nDI1 = dias úteis]
+            COT[buscar_cotas\\nview_vcrapfdo]
+            PROV[buscar_proventos\\nview_vcraprdp]
+            PIBB[buscar_pibb11_spxi11]
+            FSPUSD[buscar_fut_sp_usd\\nISP/WSP vs DOL/WDO]
+            ROL[buscar_rolagem\\nv1 → v2 por família]
+        end
+
+        SQL --> MT
+
+        subgraph MT["montar_tabela — por aba"]
+            direction TB
+            CALC["%AÇÕES = PRV/PL\\n%FUT = Notional/PL\\n%COTAS = Cotas/PL\\nTOTAL = soma\\nDESC = 1−TOTAL"]
+            SP500["Aba S&P500\\nbuckets: S&P · USD · IBX · PIBB · FANG · ISP"]
+            OFF["Aba OFFSHORES\\n%AÇÕES=0 · %FUT=0\\nCotas via vl_total"]
+            BANDA{TOTAL fora\\nde banda?}
+            CALC --> SP500 & OFF
+            CALC --> BANDA
+        end
+
+        MT --> OUT
+
+        subgraph OUT["Exportação"]
+            direction LR
+            HTML[gerar_html\\nHTML interativo\\nAbas · Alertas · Busca · Sort]
+            XLSX[exportar_excel\\nopenpyxl\\nformatação condicional]
+            PDF[gerar_pdf\\nfpdf2 A4 paisagem\\nbookmarks]
+            PNG[gerar_imagem\\nmatplotlib PNG\\npor aba]
+            RPDF[gerar_pdf_rolagem]
+            RXLSX[exportar_excel_rolagem]
+        end
+    end
+
+    LOOP --> IDX[gerar_index\\nindex.html\\ncalendário histórico]
+
+    style SQL fill:#e8f0fe,stroke:#4a6fa5
+    style MT fill:#fff8e1,stroke:#f0a500
+    style OUT fill:#e8f5e9,stroke:#2e7d32
+    style BANDA fill:#fde8e8,stroke:#c0392b
+\`\`\`
+
+---
+
+## Arquivos de entrada
+
+| Variável | Caminho padrão | Descrição |
+|---|---|---|
+| \`INPUT_EXCEL\` | \`../input/fundos_exposicao.xlsx\` | Configuração de fundos por aba (FUNDO, BENCH, MAX, MIN) |
+| \`INPUT_FUNDOS_ROL\` | \`../input/fundos.txt\` | Lista de fundos incluídos no relatório de rolagem |
+| \`LOGO_PATH\` | \`../input/logo.png\` | Logo para cabeçalho nos relatórios |
+
+---
+
+## Abas processadas (\`SHEETS\`)
+
+\`\`\`
+SINGLES, IBOV, ETFs, S&P500, OFFSHORES, MOEDAS,
+RENDA FIXA, OURO e TREASURY, DEBENTURES, ACWI, CDI
+\`\`\`
+
+Cada aba do Excel deve ter colunas: \`FUNDO\`, \`BENCH\`, \`MAX\`, \`MIN\`.
+A leitura é tolerante a variações de capitalização e nomes próximos.
+
+---
+
+## Saídas por data (\`../output/relatorios/YYYYMMDD/\`)
+
+| Arquivo | Função |
+|---|---|
+| \`exposicao_{aba}_{dt}.png\` | Imagem matplotlib por aba |
+| \`exposicao_{dt}.xlsx\` | Excel com formatação condicional |
+| \`exposicao_{dt}.html\` | HTML interativo com abas, busca e alertas |
+| \`exposicao_{dt}.pdf\` | PDF A4 paisagem navegável (fpdf2) |
+| \`rolagem_{dt}.pdf\` | PDF separado de rolagem de futuros |
+| \`rolagem_{dt}.xlsx\` | Excel de rolagem |
+
+Índice histórico: \`../output/relatorios/index.html\`
+
+---
+
+## Paleta de cores Itaú
+
+| Constante | Hex | Uso |
+|---|---|---|
+| \`ITAU_DARK\` | \`#000D3C\` | Fundo de cabeçalhos |
+| \`ITAU_ORANGE\` | \`#EC7000\` | Destaques, TOTAL na faixa |
+| \`ITAU_RED\` | \`#c0392b\` | Fora de banda |
+| \`ITAU_GREEN\` | \`#1e7e34\` | TOTAL ≥ 99% |
+| \`ROW_PAR\` | \`#eaf0fb\` | Linhas pares da tabela |
+
+---
+
+## Dependências
+
+\`\`\`python
+pandas, numpy, QuantLib, matplotlib, openpyxl, fpdf2
+sql_connection  # módulo interno de conexão com dbsx337
+\`\`\`
+`,
+
+// ── DADOS ────────────────────────────────────────────────────────────────────
+"dados": `
+# Consultas SQL — Dados
+
+**Banco:** \`dbsx337.dbo\` (SQL Server)
+
+---
+
+## FX — \`buscar_fx(dt)\`
+
+| Moeda | View/Tabela | Campo chave |
+|---|---|---|
+| USD, GBP, EUR | \`fundos_dados_moedas\` | \`codigo_iam_moeda_base = 'BRL_B3_2'\` |
+| CNY | \`FUNDOS_DADOS_INDICES\` | \`codigo_iam_indice = 'CNYXBR10'\` |
+
+Retorna \`Dict[str, float]\`: \`USD_BRL\`, \`GBP_BRL\`, \`EUR_BRL\`, \`CNYXBR10\`.
+
+---
+
+## PL — \`buscar_pl(dt, fundos)\`
+
+- View: \`view_vcraplsi\`
+- Campo: \`vl_patrliqtot1\`
+- Retorna \`Dict[fundo → PL_float]\`
+
+---
+
+## PRV (Renda Variável) — \`buscar_prv(dt, fundos, fx)\`
+
+Três queries separadas para evitar produto cartesiano:
+
+| Query | View | Propósito |
+|---|---|---|
+| \`q_prv\` | \`VIEW_vcraprv\` | Qtd bloqueada + disponível + preço médio |
+| \`q_moeda\` | \`VIEW_FUNDOS_POSICAO\` | Moeda por ticker (type = 'Equity') |
+| \`q_btc\` | \`VIEW_VCRABTC\` | Ajuste de aluguel (BTC): Doador +QTD / Tomador −QTD |
+
+**Quantidade líquida:**
+\`\`\`
+NET_QTY = QTDBLOQ + QTDDISP + QTD_BTC
+\`\`\`
+
+**Conversão cambial:**
+
+| Moeda detectada | Conversão |
+|---|---|
+| USD, IX | \`× USD_BRL\` (IX multiplica valor × 100 antes) |
+| GBP | \`× GBP_BRL\` (preço > 100 divide por 100 antes) |
+| CNY, CNY_10H | \`÷ CNYXBR10\` |
+| BRL / sem moeda | sem conversão |
+
+> **Caso especial:** \`EMERGFIA54431 / EXCS LN\` multiplica \`VALOR_LOCAL × 100\`
+
+Retorna \`Dict[fundo → PRV_BRL_total]\`
+
+---
+
+## Futuros — \`buscar_futuro(dt, fundos)\`
+
+- View: \`view_vcrapfut\`
+- Notional padrão: \`qt × vl_varponto × vl_precomerc\`
+- **DI1:** Notional = \`qt × NETWORKDAYS(dt_ref, dt_vencto)\` (dias úteis até vencimento)
+
+Retorna \`Dict[fundo → NOTIONAL_total]\`
+
+---
+
+## Cotas de Fundos
+
+| Função | Campo | Uso |
+|---|---|---|
+| \`buscar_cotas\` | \`SUM(vl_total)\` | Uso geral |
+| \`buscar_cotas_total\` | \`SUM(vl_total)\` | OFFSHORES — captura posições bloqueadas |
+
+View: \`view_vcrapfdo\`
+
+---
+
+## PIBB11 / SPXI11 — \`buscar_pibb11_spxi11(dt, fundos)\`
+
+Reúne \`VIEW_vcraprv\` + \`VIEW_VCRABTC\` filtrando \`acao IN ('PIBB11', 'SPXI11')\`.
+
+Retorna \`Dict[fundo → {"pibb11": float, "spxi11": float}]\`
+
+---
+
+## Futuros S&P / USD — \`buscar_fut_sp_usd(dt, fundos)\`
+
+| Grupo | Ativos |
+|---|---|
+| S&P | \`FUT ISP\`, \`FUT WSP\` |
+| USD | \`FUT DOL\`, \`FUT WDO\`, \`FUT BRI\` |
+
+Retorna \`Dict[fundo → {"sp": float, "usd": float}]\`
+
+---
+
+## Proventos — \`buscar_proventos(dt, fundos)\`
+
+- View: \`view_vcraprdp\`
+- Filtra: \`mttp_cd IN ('61','62','69','261','848','849','971','972','973')\`
+- Retorna \`Dict[fundo → PROVENTOS_total]\`
+`,
+
+// ── CÁLCULOS ─────────────────────────────────────────────────────────────────
+"calculos": `
+# Cálculos de Exposição
+
+---
+
+## Tabela padrão — \`montar_tabela(...)\`
+
+Recebe os mapas de dados e calcula as métricas por fundo:
+
+| Coluna | Fórmula |
+|---|---|
+| \`%AÇÕES\` | \`PRV_BRL / PL\` |
+| \`%FUT\` | \`Notional_futuros / PL\` |
+| \`%COTAS\` | \`vl_total_cotas / PL\` |
+| \`TOTAL\` | \`%AÇÕES + %FUT + %COTAS\` |
+| \`DESC\` | \`1 − TOTAL\` |
+| \`Proventos % PL\` | \`Proventos / PL\` |
+
+Infinitos (\`inf\`, \`-inf\`) são convertidos para \`NaN\`.
+\`MAX\` e \`MIN\` são mantidos internamente para coloração mas não exibidos na tabela.
+
+---
+
+## Aba S&P500 — lógica especial
+
+Renomeia colunas e aplica modelo de buckets:
+
+\`\`\`
+prv_val  = PRV_BRL do fundo
+sp_fut   = Notional FUT ISP + FUT WSP
+usd_fut  = Notional FUT DOL + FUT WDO + FUT BRI
+pibb11   = valor de PIBB11
+spxi11   = valor de SPXI11
+\`\`\`
+
+| Bucket | Campo de saída | Cálculo |
+|---|---|---|
+| S&P | \`EXPOSIÇÃO S&P\` | \`(prv − pibb11 + sp_fut) / PL\` |
+| USD | \`EXPOSIÇÃO USD\` | \`usd_fut / PL\` |
+| ETFs | \`PIBB + SPXI\` | \`(pibb11 + spxi11) / PL\` |
+| IBX | \`EXPOSIÇÃO IBX\` | 0.002 se \`SP500MM*\`, senão 0 |
+| ISP | \`ISP\` | \`sp_fut / PL\` (zero se < 1%) |
+| FANG | \`FANG\` | 0.75 se benchmark contém "FANG" (S&P ×0.2506) |
+
+**Regras de ajuste por prefixo de fundo:**
+
+| Prefixo | Efeito |
+|---|---|
+| \`SP500*\` ou \`USDAFIM*\` | \`EXPOSIÇÃO USD = EXPOSIÇÃO S&P\` |
+| \`ITAUMMSP*\` ou \`ITAUTRN*\` | \`EXPOSIÇÃO USD = 0\` (hedge) |
+
+> \`TOTAL = EXPOSIÇÃO S&P\` — apenas S&P entra no TOTAL desta aba
+
+---
+
+## Aba OFFSHORES — lógica especial
+
+- \`%AÇÕES = 0\`, \`%FUT = 0\`
+- \`%COTAS\` calculado com \`buscar_cotas_total\` (usa \`vl_total\`, não \`vl_liq\`)
+- Motivo: fundos offshore têm posições bloqueadas que não aparecem em \`vl_liq\`
+
+---
+
+## Regra de fora-de-banda
+
+\`\`\`python
+fora_banda = (TOTAL > MAX) or (TOTAL < MIN)
+# só avalia se MAX != 0 e MIN != 0 e ambos não-nulos
+\`\`\`
+
+**Efeito visual:**
+
+| Estado | Fundo da linha | Cor do TOTAL |
+|---|---|---|
+| Fora da banda | \`#fde8e8\` (vermelho claro) | Vermelho, negrito |
+| TOTAL ≥ 99% | normal | Verde |
+| TOTAL < 99% | normal | Laranja |
+
+Fundos fora-de-banda aparecem automaticamente na aba **ALERTA** do HTML.
+`,
+
+// ── OUTPUTS ──────────────────────────────────────────────────────────────────
+"outputs": `
+# Geração de Relatórios
+
+---
+
+## HTML interativo — \`gerar_html(...)\`
+
+Arquivo único auto-contido (logo embedada em base64).
+
+### Estrutura de navegação
+
+\`\`\`
+Nav principal:  [EXPOSIÇÃO]  [ROLAGEM]*
+Nav secundária: [ALERTA] [SINGLES] [IBOV] [ETFs] ... (abas)
+\`\`\`
+
+*Seção ROLAGEM só aparece se houver dados de rolagem.*
+
+### Aba ALERTA
+
+- Lista todos os fundos fora-de-banda de todas as abas
+- Agrupado por aba, com contador de fundos
+- Botão "Ir para aba →" navega diretamente para a aba correta
+- Clique no nome do fundo: navega + destaca a linha em amarelo por 1.4s
+
+### Funcionalidades JS
+
+| Função | Comportamento |
+|---|---|
+| \`sortTable(th)\` | Ordenação clicável nas colunas (numérica ou alfabética) |
+| \`filterTable(input)\` | Busca em tempo real por texto em qualquer célula |
+| \`filterAlerta(input)\` | Busca no painel de alertas com ocultação por grupo |
+| \`goToPane(paneId)\` | Navegação programática para aba |
+| \`goToFund(paneId, name)\` | Navega para aba + scroll + highlight da linha do fundo |
+
+### Formatação de células
+
+| Coluna | Formato |
+|---|---|
+| \`PL\` | \`R$ #,##0.00\` |
+| \`TOTAL\`, \`%AÇÕES\`, etc. | \`0.00%\` |
+| \`DESC\` (só S&P500) | \`0.000%\` (3 casas) |
+| \`FUNDO\` | texto, alinhado à esquerda |
+
+---
+
+## Excel — \`exportar_excel(...)\`
+
+Usa \`openpyxl\`. Uma aba por categoria de fundo.
+
+- Cabeçalho: fundo azul escuro, texto branco, negrito
+- Linhas pares: \`ROW_PAR\` (#eaf0fb)
+- Fora de banda: \`#fde8e8\` + cor da fonte TOTAL em vermelho
+- TOTAL verde/laranja/vermelho conforme regra de coloração
+- Freeze na linha 1 (\`freeze_panes = "A2"\`)
+- Largura de coluna auto-ajustada (máx 32)
+
+---
+
+## Imagem PNG — \`gerar_imagem(...)\`
+
+Usa matplotlib com \`GridSpec\` de 4 linhas:
+
+| Linha | Conteúdo |
+|---|---|
+| \`gs[0]\` | Faixa azul escuro (topo) + linha laranja |
+| \`gs[1]\` | Título + subtítulo (aba) + data de referência |
+| \`gs[2]\` | Tabela de dados |
+| \`gs[3]\` | Rodapé com legenda |
+
+Configurações: \`dpi=150\`, \`bbox_inches="tight"\`, tamanho dinâmico por número de linhas.
+
+---
+
+## PDF — \`gerar_pdf(...)\` e \`gerar_pdf_rolagem(...)\`
+
+Usa **fpdf2**, orientação A4 paisagem.
+
+- Classe \`ExposicaoPDF(FPDF)\` com \`header()\` e \`footer()\` customizados
+- Bookmarks navegáveis por aba (\`pdf.start_section(aba)\`)
+- Cabeçalho repetido em quebras de página automáticas
+- Coloração de TOTAL idêntica ao HTML/Excel
+
+---
+
+## Índice histórico — \`gerar_index(root_dir)\`
+
+Arquivo: \`../output/relatorios/index.html\`
+
+- **Calendário interativo** (JS puro): navega por mês, dias clicáveis com relatório
+- Dias com rolagem: destaque em vermelho; sem rolagem: laranja
+- Detecção automática de rolagem: verifica presença de \`id="sec-rolagem"\` nos HTMLs
+- Tabela lateral com histórico de todos os relatórios disponíveis
+`,
+
+// ── ROLAGEM ──────────────────────────────────────────────────────────────────
+"rolagem": `
+# Rolagem de Futuros e Beta
+
+---
+
+## Rolagem de Futuros — \`buscar_rolagem(dt, fundos)\`
+
+Analisa a distribuição de posição entre o vencimento atual (v1) e o próximo (v2).
+
+### Fonte de dados
+
+- View: \`view_vcrapfut\`
+- \`Notional = ISNULL(qt,0) × ISNULL(vl_varponto,0) × ISNULL(vl_precomerc,0)\`
+
+### Agrupamento por família de contrato
+
+| Grupo | Ativos | Ciclo (meses) |
+|---|---|---|
+| \`DOL_WDO\` | \`DOL\`, \`WDO\` | 1 |
+| \`WIN\` | \`WIN\` | 2 |
+| \`WEU\` | \`WEU\` | 2 |
+| \`ISP\` / \`WSP\` | \`ISP\`, \`WSP\` | 3 |
+| Outros | conforme banco | 3 (default) |
+
+**Exclusões por padrão:** \`DI1\`, \`DAP\` — configurável via \`GRUPOS_ROLAGEM_EXCLUIR\`
+
+### Cálculo das métricas
+
+\`\`\`
+Pos v1 % PL  = Notional_v1 / PL
+Pos v2 % PL  = Notional_v2 / PL
+v1 % FUT     = |Notional_v1| / (|Notional_v1| + |Notional_v2|)
+v2 % FUT     = |Notional_v2| / (|Notional_v1| + |Notional_v2|)
+\`\`\`
+
+O denominador usa soma dos **absolutos** (posição comprada + vendida).
+
+### Configurações
+
+\`\`\`python
+GRUPOS_ROLAGEM: Optional[List[str]] = None   # None = todos
+GRUPOS_ROLAGEM_EXCLUIR = ["DI1", "DAP"]
+ROLAGEM_MESES_ADICIONAIS: int = 0            # 0 = só mês atual como v1
+\`\`\`
+
+---
+
+## Relatório Beta — \`BETA_ATIVOS\` / \`BETA_FUNDS\`
+
+Monitora a exposição dos fundos INTRA em relação a targets dinâmicos ajustados por drift de preço desde uma data-base.
+
+### Fundos monitorados (\`BETA_FUNDS\`)
+
+| Código | Perfil |
+|---|---|
+| \`INTRAGITAU362\` | Conservador |
+| \`INTRAGITAU363\` | Moderado |
+| \`INTRAGITAU364\` | Agressivo |
+
+### Ativos monitorados (\`BETA_ATIVOS\`)
+
+| Ticker | FICAD_CD |
+|---|---|
+| IB5M11 | ITAUIMAB64215 |
+| BOVV11 | ITAUIBOV62154 |
+| IRFM11 | ITAUIRFMP24216 |
+| SPXI11 | ITAUTRN61201 |
+| B5P211 | ITAUIMA5P2070 |
+| BITI11 | ITAUBLO66606 |
+| CDI (residual) | FIDELILCMM771 |
+
+**Data-base:** \`2025-04-30\` | **PL de referência:** \`R$ 100.000.000\`
+
+### Cálculo de target com drift (\`calcular_targets_beta\`)
+
+\`\`\`
+unidades = (peso × PL_base) / nav_base
+valor_d1 = unidades × nav_d1
+target_% = valor_d1 / SUM(todos os valores_d1)
+\`\`\`
+
+CDI = residual: \`max(0, 1 − soma_demais_exposições)\`
+
+### Limiar de alerta
+
+\`\`\`python
+BETA_DIF_THRESHOLD = 0.0015   # ±0.15%
+# verde: dentro da banda
+# amarelo: próximo do limite
+# vermelho: fora da banda
+\`\`\`
+`
+};
+
+// ── Renderização ──────────────────────────────────────────────────────────────
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  flowchart: { curve: 'basis', padding: 20 },
+  themeVariables: {
+    primaryColor:   '#000D3C',
+    primaryTextColor: '#ffffff',
+    primaryBorderColor: '#EC7000',
+    lineColor:      '#EC7000',
+    secondaryColor: '#eaf0fb',
+    tertiaryColor:  '#fff8e1',
+  }
+});
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+});
+
+// Renderer customizado para substituir bloco ```mermaid por <div class="mermaid">
+const renderer = new marked.Renderer();
+const originalCode = renderer.code.bind(renderer);
+renderer.code = function(code, lang) {
+  if (lang === 'mermaid') {
+    return `<div class="mermaid">${code}</div>`;
+  }
+  const highlighted = (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang))
+    ? hljs.highlight(code, { language: lang }).value
+    : (typeof hljs !== 'undefined' ? hljs.highlightAuto(code).value : code);
+  return `<pre><code class="hljs language-${lang || ''}">${highlighted}</code></pre>`;
+};
+marked.use({ renderer });
+
+function renderAll() {
+  Object.entries(DOCS).forEach(([id, md]) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = marked.parse(md);
+  });
+  mermaid.run({ querySelector: '.mermaid' });
+}
+
+function show(id) {
+  document.querySelectorAll('.doc-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  const section = document.getElementById(id);
+  if (section) section.classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(l => {
+    if (l.getAttribute('onclick') === `show('${id}')`) l.classList.add('active');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+window.addEventListener('DOMContentLoaded', renderAll);
+</script>
+</body>
+</html>

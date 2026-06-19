@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grafo Neural — exposicao_html.py</title>
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --dark:   #000D3C;
+      --orange: #EC7000;
+      --bg:     #0a0e1a;
+    }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: #e0e6ff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Header ── */
+    .hdr { background: var(--dark); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid var(--orange); flex-shrink: 0; }
+    .hdr h1 { font-size: .95rem; font-weight: 700; letter-spacing: .06em; color: #fff; }
+    .hdr span { font-size: .75rem; color: #6b7a99; }
+
+    /* ── Toolbar ── */
+    .toolbar { background: #0f1428; padding: 8px 24px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid #1e2845; flex-shrink: 0; }
+    .toolbar label { font-size: .72rem; color: #6b7a99; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .filter-btn { padding: 5px 13px; border-radius: 14px; border: 1.5px solid; background: transparent; font-size: .75rem; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .filter-btn.active { color: #fff !important; }
+    .sep { width: 1px; height: 22px; background: #1e2845; margin: 0 4px; }
+    .search-inp { padding: 5px 12px; border-radius: 8px; border: 1.5px solid #1e2845; background: #0a0e1a; color: #e0e6ff; font-size: .78rem; width: 200px; outline: none; transition: border .2s; }
+    .search-inp:focus { border-color: var(--orange); }
+    .btn-fit { padding: 5px 14px; border-radius: 8px; border: 1.5px solid #1e2845; background: transparent; color: #6b7a99; font-size: .75rem; cursor: pointer; transition: all .15s; margin-left: auto; }
+    .btn-fit:hover { border-color: var(--orange); color: var(--orange); }
+
+    /* ── Graph ── */
+    #graph { flex: 1; width: 100%; }
+
+    /* ── Info panel ── */
+    .info-panel {
+      position: fixed; right: 20px; top: 100px;
+      width: 280px; background: #0f1428; border: 1px solid #1e2845;
+      border-radius: 12px; padding: 18px; display: none;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      z-index: 100;
+    }
+    .info-panel.visible { display: block; }
+    .info-panel h3 { color: var(--orange); font-size: .88rem; font-weight: 700; margin-bottom: 10px; }
+    .info-row { display: flex; gap: 8px; margin-bottom: 6px; font-size: .78rem; }
+    .info-label { color: #6b7a99; min-width: 70px; font-weight: 600; }
+    .info-val { color: #e0e6ff; word-break: break-all; }
+    .info-calls { margin-top: 12px; }
+    .info-calls-title { font-size: .72rem; color: #6b7a99; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .info-call-item { font-size: .75rem; color: #a0b0d0; padding: 3px 0; border-bottom: 1px solid #1a2240; cursor: pointer; transition: color .12s; }
+    .info-call-item:hover { color: var(--orange); }
+    .close-btn { position: absolute; top: 10px; right: 12px; background: none; border: none; color: #6b7a99; font-size: 1rem; cursor: pointer; line-height: 1; }
+    .close-btn:hover { color: #fff; }
+
+    /* ── Legend ── */
+    .legend { position: fixed; left: 20px; bottom: 20px; background: #0f1428; border: 1px solid #1e2845; border-radius: 10px; padding: 12px 16px; font-size: .72rem; z-index: 100; }
+    .legend-title { color: #6b7a99; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .leg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; color: #a0b0d0; }
+    .leg-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Hint ── */
+    .hint { position: fixed; bottom: 20px; right: 20px; font-size: .7rem; color: #2a3560; }
+  </style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>GRAFO NEURAL DE CHAMADAS — exposicao_html.py</h1>
+  <span>Gerado com pyan3 · vis-network</span>
+</div>
+
+<div class="toolbar">
+  <label>Filtrar:</label>
+  <button class="filter-btn active" data-cat="all"    style="border-color:#6b7a99;color:#6b7a99">Todos</button>
+  <button class="filter-btn"        data-cat="main"   style="border-color:#f59e42;color:#f59e42">main</button>
+  <button class="filter-btn"        data-cat="buscar" style="border-color:#38bdf8;color:#38bdf8">buscar_*</button>
+  <button class="filter-btn"        data-cat="montar" style="border-color:#a78bfa;color:#a78bfa">montar_*</button>
+  <button class="filter-btn"        data-cat="gerar"  style="border-color:#34d399;color:#34d399">gerar_*</button>
+  <button class="filter-btn"        data-cat="export" style="border-color:#fb7185;color:#fb7185">exportar_*</button>
+  <button class="filter-btn"        data-cat="util"   style="border-color:#fbbf24;color:#fbbf24">utils/_fmt</button>
+  <button class="filter-btn"        data-cat="inner"  style="border-color:#475569;color:#475569">inner fns</button>
+  <div class="sep"></div>
+  <input class="search-inp" id="searchInp" placeholder="🔍 Buscar função...">
+  <button class="btn-fit" id="btnFit">⊞ Ajustar tela</button>
+</div>
+
+<div id="graph"></div>
+
+<div class="info-panel" id="infoPanel">
+  <button class="close-btn" onclick="closeInfo()">✕</button>
+  <h3 id="infoName">—</h3>
+  <div class="info-row"><span class="info-label">Tipo</span><span class="info-val" id="infoType">—</span></div>
+  <div class="info-row"><span class="info-label">Linha</span><span class="info-val" id="infoLine">—</span></div>
+  <div class="info-row"><span class="info-label">Contexto</span><span class="info-val" id="infoCtx">—</span></div>
+  <div class="info-calls">
+    <div class="info-calls-title">Chama →</div>
+    <div id="infoCalls"></div>
+  </div>
+  <div class="info-calls" style="margin-top:10px">
+    <div class="info-calls-title">← Chamado por</div>
+    <div id="infoCallers"></div>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-title">Legenda</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#f59e42"></div>main (entry point)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#38bdf8"></div>buscar_* (SQL)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#a78bfa"></div>montar_* (cálculo)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#34d399"></div>gerar_* (output)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#fb7185"></div>exportar_*</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#fbbf24"></div>utils / _fmt</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#475569"></div>inner functions</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#94a3b8"></div>constantes</div>
+</div>
+
+<div class="hint">Clique num nó para detalhes · Scroll para zoom · Arraste para mover</div>
+
+<script>
+// ── Dados do grafo (extraídos do pyan3) ──────────────────────────────────────
+
+const RAW_NODES = [
+  { id:"exposicao_html",                             label:"exposicao_html",                   tooltip:"exposicao_html.py",                                          line:null,   kind:"module"   },
+  { id:"exposicao_html__main",                       label:"main",                             tooltip:"Ponto de entrada principal",                                 line:3001,   kind:"main"     },
+  // buscar_*
+  { id:"exposicao_html__buscar_fx",                  label:"buscar_fx",                        tooltip:"Busca taxas de câmbio USD/GBP/EUR/CNY",                       line:170,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_pl",                  label:"buscar_pl",                        tooltip:"Busca PL dos fundos (view_vcraplsi)",                         line:202,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_prv",                 label:"buscar_prv",                       tooltip:"Busca posições de renda variável + câmbio",                   line:218,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_futuro",              label:"buscar_futuro",                    tooltip:"Busca notional de futuros (DI1 = dias úteis)",                line:353,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_cotas",               label:"buscar_cotas",                     tooltip:"Busca cotas de fundos (vl_total)",                            line:422,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_cotas_total",         label:"buscar_cotas_total",               tooltip:"Busca cotas totais (inclui bloqueadas) — offshores",          line:439,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_rolagem",             label:"buscar_rolagem",                   tooltip:"Busca rolagem de futuros v1→v2 por família",                  line:466,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_pibb11_spxi11",       label:"buscar_pibb11_spxi11",             tooltip:"Busca valor de PIBB11 e SPXI11",                              line:606,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_fut_sp_usd",          label:"buscar_fut_sp_usd",                tooltip:"Busca futuros S&P (ISP/WSP) vs USD (DOL/WDO)",               line:682,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_proventos",           label:"buscar_proventos",                 tooltip:"Busca proventos por mttp_cd",                                 line:725,    kind:"buscar"   },
+  { id:"exposicao_html__buscar_nav_beta",            label:"buscar_nav_beta",                  tooltip:"Busca NAV dos ativos BETA",                                   line:2162,   kind:"buscar"   },
+  { id:"exposicao_html__buscar_cotas_quebradas",     label:"buscar_cotas_quebradas",           tooltip:"Busca cotas quebradas dos fundos INTRA (Beta)",               line:2236,   kind:"buscar"   },
+  // montar_*
+  { id:"exposicao_html__montar_tabela",              label:"montar_tabela",                    tooltip:"Calcula %AÇÕES/%FUT/%COTAS/TOTAL/DESC por fundo",             line:757,    kind:"montar"   },
+  { id:"exposicao_html__montar_tabela_beta",         label:"montar_tabela_beta",               tooltip:"Monta tabela de exposição Beta (fundos INTRA)",               line:2327,   kind:"montar"   },
+  { id:"exposicao_html__calcular_targets_beta",      label:"calcular_targets_beta",            tooltip:"Calcula targets com drift de preço desde data-base",          line:2208,   kind:"montar"   },
+  // gerar_*
+  { id:"exposicao_html__gerar_imagem",               label:"gerar_imagem",                     tooltip:"Gera PNG via matplotlib (GridSpec 4 linhas)",                 line:803,    kind:"gerar"    },
+  { id:"exposicao_html__gerar_html",                 label:"gerar_html",                       tooltip:"Gera HTML interativo com abas, alertas e busca",              line:1107,   kind:"gerar"    },
+  { id:"exposicao_html__gerar_index",                label:"gerar_index",                      tooltip:"Gera index.html com calendário histórico",                    line:1628,   kind:"gerar"    },
+  { id:"exposicao_html__gerar_pdf",                  label:"gerar_pdf",                        tooltip:"Gera PDF A4 paisagem com fpdf2",                              line:1901,   kind:"gerar"    },
+  { id:"exposicao_html__gerar_imagem_beta",          label:"gerar_imagem_beta",                tooltip:"Gera imagem do relatório Beta (versão 1)",                    line:2381,   kind:"gerar"    },
+  { id:"exposicao_html__gerar_imagem_beta_2",        label:"gerar_imagem_beta_2",              tooltip:"Gera imagem do relatório Beta (versão 2)",                    line:2651,   kind:"gerar"    },
+  // exportar_*
+  { id:"exposicao_html__exportar_excel",             label:"exportar_excel",                   tooltip:"Exporta Excel com openpyxl e formatação condicional",         line:1006,   kind:"export"   },
+  { id:"exposicao_html__exportar_excel_rolagem",     label:"exportar_excel_rolagem",           tooltip:"Exporta Excel de rolagem de futuros",                         line:2803,   kind:"export"   },
+  { id:"exposicao_html__gerar_pdf_rolagem",          label:"gerar_pdf_rolagem",                tooltip:"Gera PDF do relatório de rolagem",                            line:2865,   kind:"export"   },
+  // ler_*
+  { id:"exposicao_html__ler_exposicao_excel",        label:"ler_exposicao_excel",              tooltip:"Lê fundos_exposicao.xlsx com tolerância a nomes",             line:127,    kind:"buscar"   },
+  { id:"exposicao_html__ler_fundos_rol",             label:"ler_fundos_rol",                   tooltip:"Lê lista de fundos para rolagem (fundos.txt)",                line:68,     kind:"buscar"   },
+  { id:"exposicao_html__output_dir_for_date",        label:"output_dir_for_date",              tooltip:"Retorna caminho de saída para uma data",                      line:120,    kind:"util"     },
+  // utils
+  { id:"exposicao_html___ids",                       label:"_ids",                             tooltip:"Formata lista de fundos como 'F1','F2' para SQL IN",          line:76,     kind:"util"     },
+  { id:"exposicao_html___scalar",                    label:"_scalar",                          tooltip:"Executa query e retorna float scalar",                        line:79,     kind:"util"     },
+  { id:"exposicao_html___to_num",                    label:"_to_num",                          tooltip:"pd.to_numeric com fillna(0)",                                 line:86,     kind:"util"     },
+  { id:"exposicao_html___networkdays",               label:"_networkdays",                     tooltip:"Conta dias úteis entre duas datas (pd.bdate_range)",          line:115,    kind:"util"     },
+  { id:"exposicao_html___fmt_money",                 label:"_fmt_money",                       tooltip:"Formata float como R$ #,##0.00",                              line:89,     kind:"util"     },
+  { id:"exposicao_html___fmt_pct",                   label:"_fmt_pct",                         tooltip:"Formata float como 0.00%",                                    line:95,     kind:"util"     },
+  { id:"exposicao_html___fmt_pct3",                  label:"_fmt_pct3",                        tooltip:"Formata float como 0.000%",                                   line:101,    kind:"util"     },
+  { id:"exposicao_html___fmt_text",                  label:"_fmt_text",                        tooltip:"Formata valor como texto limpo",                              line:107,    kind:"util"     },
+  // constantes
+  { id:"exposicao_html__BETA_ATIVOS",                label:"BETA_ATIVOS",                      tooltip:"Dict FICAD_CD→(ticker,w_c,w_m,w_a,nav_base)",                line:2136,   kind:"const"    },
+  { id:"exposicao_html__BETA_FUNDS",                 label:"BETA_FUNDS",                       tooltip:"Dict fund→perfil (Conservador/Moderado/Agressivo)",           line:2150,   kind:"const"    },
+  { id:"exposicao_html___MES_COD",                   label:"_MES_COD",                         tooltip:"Dict mês→código B3 (1:'F', 2:'G', ...)",                     line:50,     kind:"const"    },
+  { id:"exposicao_html___GRUP_DOL",                  label:"_GRUP_DOL",                        tooltip:"Set {'DOL','WDO'}",                                           line:51,     kind:"const"    },
+  { id:"exposicao_html___VENC_CYCLE",                label:"_VENC_CYCLE",                      tooltip:"Ciclo em meses por família de futuro",                        line:53,     kind:"const"    },
+  // inner functions
+  { id:"exposicao_html__buscar_fx__q_moeda",                            label:"q_moeda\n(buscar_fx)",           tooltip:"Gera query de câmbio por moeda",                              line:173,    kind:"inner"    },
+  { id:"exposicao_html__buscar_rolagem___norm",                         label:"_norm\n(rolagem)",               tooltip:"Normaliza nome do ativo (remove 'FUT ')",                     line:497,    kind:"inner"    },
+  { id:"exposicao_html__exportar_excel__to_argb",                       label:"to_argb\n(excel)",              tooltip:"Converte hex para ARGB do openpyxl",                          line:1013,   kind:"inner"    },
+  { id:"exposicao_html__gerar_html__fmt_cell",                          label:"fmt_cell\n(html)",              tooltip:"Formata célula conforme coluna",                              line:1130,   kind:"inner"    },
+  { id:"exposicao_html__gerar_html__build_table",                       label:"build_table\n(html)",           tooltip:"Gera HTML da tabela principal",                               line:1135,   kind:"inner"    },
+  { id:"exposicao_html__gerar_html__build_alerta_table",                label:"build_alerta_table\n(html)",    tooltip:"Gera HTML da aba ALERTA",                                     line:1213,   kind:"inner"    },
+  { id:"exposicao_html__gerar_html___build_rol_table",                  label:"_build_rol_table\n(html)",      tooltip:"Gera HTML da seção de rolagem",                               line:1306,   kind:"inner"    },
+  { id:"exposicao_html__gerar_index___parse_dt",                        label:"_parse_dt\n(index)",            tooltip:"Extrai data do nome do arquivo HTML",                         line:1637,   kind:"inner"    },
+  { id:"exposicao_html__gerar_pdf__ExposicaoPDF",                       label:"ExposicaoPDF",                  tooltip:"Classe FPDF para relatório de exposição",                     line:1944,   kind:"inner"    },
+  { id:"exposicao_html__gerar_pdf_rolagem__RolagemPDF",                 label:"RolagemPDF",                    tooltip:"Classe FPDF para relatório de rolagem",                       line:2890,   kind:"inner"    },
+  { id:"exposicao_html___buscar_cotas_quebradas_b2",                    label:"_buscar_cotas_quebradas_b2",    tooltip:"Inner: busca cotas quebradas (Beta v2)",                      line:2540,   kind:"inner"    },
+  { id:"exposicao_html___calcular_targets_b2",                          label:"_calcular_targets_b2",          tooltip:"Inner: calcula targets Beta v2",                              line:2563,   kind:"inner"    },
+  { id:"exposicao_html___montar_df_beta_2",                             label:"_montar_df_beta_2",             tooltip:"Inner: monta DataFrame Beta v2",                              line:2603,   kind:"inner"    },
+  { id:"exposicao_html___soma_brl",                                     label:"_soma_brl",                     tooltip:"Inner: soma valores em BRL",                                  line:2594,   kind:"inner"    },
+];
+
+const RAW_EDGES = [
+  ["exposicao_html","exposicao_html__main"],
+  ["exposicao_html__main","exposicao_html__buscar_fx"],
+  ["exposicao_html__main","exposicao_html__buscar_pl"],
+  ["exposicao_html__main","exposicao_html__buscar_prv"],
+  ["exposicao_html__main","exposicao_html__buscar_futuro"],
+  ["exposicao_html__main","exposicao_html__buscar_cotas"],
+  ["exposicao_html__main","exposicao_html__buscar_cotas_total"],
+  ["exposicao_html__main","exposicao_html__buscar_proventos"],
+  ["exposicao_html__main","exposicao_html__buscar_pibb11_spxi11"],
+  ["exposicao_html__main","exposicao_html__buscar_fut_sp_usd"],
+  ["exposicao_html__main","exposicao_html__buscar_rolagem"],
+  ["exposicao_html__main","exposicao_html__ler_exposicao_excel"],
+  ["exposicao_html__main","exposicao_html__ler_fundos_rol"],
+  ["exposicao_html__main","exposicao_html__montar_tabela"],
+  ["exposicao_html__main","exposicao_html__exportar_excel"],
+  ["exposicao_html__main","exposicao_html__exportar_excel_rolagem"],
+  ["exposicao_html__main","exposicao_html__gerar_html"],
+  ["exposicao_html__main","exposicao_html__gerar_index"],
+  ["exposicao_html__main","exposicao_html__gerar_pdf"],
+  ["exposicao_html__main","exposicao_html__gerar_pdf_rolagem"],
+  // buscar_fx
+  ["exposicao_html__buscar_fx","exposicao_html___scalar"],
+  ["exposicao_html__buscar_fx","exposicao_html__buscar_fx__q_moeda"],
+  // buscar_pl
+  ["exposicao_html__buscar_pl","exposicao_html___ids"],
+  // buscar_prv
+  ["exposicao_html__buscar_prv","exposicao_html___ids"],
+  // buscar_futuro
+  ["exposicao_html__buscar_futuro","exposicao_html___ids"],
+  ["exposicao_html__buscar_futuro","exposicao_html___networkdays"],
+  ["exposicao_html__buscar_futuro","exposicao_html___to_num"],
+  // buscar_cotas
+  ["exposicao_html__buscar_cotas","exposicao_html___ids"],
+  ["exposicao_html__buscar_cotas","exposicao_html___to_num"],
+  // buscar_cotas_total
+  ["exposicao_html__buscar_cotas_total","exposicao_html___ids"],
+  ["exposicao_html__buscar_cotas_total","exposicao_html___to_num"],
+  // buscar_rolagem
+  ["exposicao_html__buscar_rolagem","exposicao_html___ids"],
+  ["exposicao_html__buscar_rolagem","exposicao_html___MES_COD"],
+  ["exposicao_html__buscar_rolagem","exposicao_html___GRUP_DOL"],
+  ["exposicao_html__buscar_rolagem","exposicao_html___VENC_CYCLE"],
+  ["exposicao_html__buscar_rolagem","exposicao_html__buscar_pl"],
+  ["exposicao_html__buscar_rolagem","exposicao_html__buscar_rolagem___norm"],
+  // buscar_pibb11_spxi11
+  ["exposicao_html__buscar_pibb11_spxi11","exposicao_html___ids"],
+  // buscar_fut_sp_usd
+  ["exposicao_html__buscar_fut_sp_usd","exposicao_html___ids"],
+  // buscar_proventos
+  ["exposicao_html__buscar_proventos","exposicao_html___ids"],
+  ["exposicao_html__buscar_proventos","exposicao_html___to_num"],
+  // buscar_nav_beta
+  ["exposicao_html__buscar_nav_beta","exposicao_html__BETA_ATIVOS"],
+  ["exposicao_html__buscar_nav_beta","exposicao_html___ids"],
+  // buscar_cotas_quebradas
+  ["exposicao_html__buscar_cotas_quebradas","exposicao_html__BETA_FUNDS"],
+  ["exposicao_html__buscar_cotas_quebradas","exposicao_html___ids"],
+  // montar_tabela
+  ["exposicao_html__montar_tabela","exposicao_html___to_num"],
+  // montar_tabela_beta
+  ["exposicao_html__montar_tabela_beta","exposicao_html__BETA_ATIVOS"],
+  ["exposicao_html__montar_tabela_beta","exposicao_html__BETA_FUNDS"],
+  // calcular_targets_beta
+  ["exposicao_html__calcular_targets_beta","exposicao_html__BETA_ATIVOS"],
+  // ler_exposicao_excel
+  ["exposicao_html__ler_exposicao_excel","exposicao_html__ler_exposicao_excel__fc"],
+  // exportar_excel
+  ["exposicao_html__exportar_excel","exposicao_html__exportar_excel__to_argb"],
+  // exportar_excel_rolagem
+  ["exposicao_html__exportar_excel_rolagem","exposicao_html__exportar_excel_rolagem__to_argb"],
+  // gerar_imagem
+  ["exposicao_html__gerar_imagem","exposicao_html___fmt_money"],
+  ["exposicao_html__gerar_imagem","exposicao_html___fmt_pct"],
+  ["exposicao_html__gerar_imagem","exposicao_html___fmt_pct3"],
+  ["exposicao_html__gerar_imagem","exposicao_html___fmt_text"],
+  // gerar_html
+  ["exposicao_html__gerar_html","exposicao_html__gerar_html__fmt_cell"],
+  ["exposicao_html__gerar_html","exposicao_html__gerar_html__build_table"],
+  ["exposicao_html__gerar_html","exposicao_html__gerar_html__build_alerta_table"],
+  ["exposicao_html__gerar_html","exposicao_html__gerar_html___build_rol_table"],
+  ["exposicao_html__gerar_html__fmt_cell","exposicao_html___fmt_money"],
+  ["exposicao_html__gerar_html__fmt_cell","exposicao_html___fmt_pct"],
+  ["exposicao_html__gerar_html__fmt_cell","exposicao_html___fmt_text"],
+  ["exposicao_html__gerar_html__build_table","exposicao_html___fmt_pct3"],
+  ["exposicao_html__gerar_html__build_table","exposicao_html__gerar_html__fmt_cell"],
+  ["exposicao_html__gerar_html__build_alerta_table","exposicao_html___fmt_money"],
+  ["exposicao_html__gerar_html__build_alerta_table","exposicao_html___fmt_pct"],
+  ["exposicao_html__gerar_html__build_alerta_table","exposicao_html___fmt_text"],
+  ["exposicao_html__gerar_html___build_rol_table","exposicao_html___fmt_money"],
+  ["exposicao_html__gerar_html___build_rol_table","exposicao_html___fmt_pct"],
+  ["exposicao_html__gerar_html___build_rol_table","exposicao_html___fmt_text"],
+  // gerar_index
+  ["exposicao_html__gerar_index","exposicao_html__gerar_index___parse_dt"],
+  // gerar_pdf
+  ["exposicao_html__gerar_pdf","exposicao_html__gerar_pdf__ExposicaoPDF"],
+  ["exposicao_html__gerar_pdf__ExposicaoPDF","exposicao_html___fmt_pct3"],
+  ["exposicao_html__gerar_pdf__ExposicaoPDF","exposicao_html___fmt_money"],
+  ["exposicao_html__gerar_pdf__ExposicaoPDF","exposicao_html___fmt_pct"],
+  ["exposicao_html__gerar_pdf__ExposicaoPDF","exposicao_html___fmt_text"],
+  // gerar_pdf_rolagem
+  ["exposicao_html__gerar_pdf_rolagem","exposicao_html__gerar_pdf_rolagem__RolagemPDF"],
+  ["exposicao_html__gerar_pdf_rolagem__RolagemPDF","exposicao_html___fmt_money"],
+  ["exposicao_html__gerar_pdf_rolagem__RolagemPDF","exposicao_html___fmt_pct"],
+  ["exposicao_html__gerar_pdf_rolagem__RolagemPDF","exposicao_html___fmt_text"],
+  // gerar_imagem_beta_2
+  ["exposicao_html__gerar_imagem_beta_2","exposicao_html__BETA_FUNDS"],
+  ["exposicao_html__gerar_imagem_beta_2","exposicao_html___buscar_cotas_quebradas_b2"],
+  ["exposicao_html__gerar_imagem_beta_2","exposicao_html___calcular_targets_b2"],
+  ["exposicao_html__gerar_imagem_beta_2","exposicao_html___montar_df_beta_2"],
+  ["exposicao_html__gerar_imagem_beta_2","exposicao_html__buscar_nav_beta"],
+  ["exposicao_html__gerar_imagem_beta_2","exposicao_html__buscar_pl"],
+  // inner beta
+  ["exposicao_html___buscar_cotas_quebradas_b2","exposicao_html__BETA_ATIVOS"],
+  ["exposicao_html___buscar_cotas_quebradas_b2","exposicao_html__BETA_FUNDS"],
+  ["exposicao_html___buscar_cotas_quebradas_b2","exposicao_html___ids"],
+  ["exposicao_html___calcular_targets_b2","exposicao_html__BETA_ATIVOS"],
+  ["exposicao_html___montar_df_beta_2","exposicao_html__BETA_ATIVOS"],
+  ["exposicao_html___montar_df_beta_2","exposicao_html__BETA_FUNDS"],
+  ["exposicao_html___montar_df_beta_2","exposicao_html___soma_brl"],
+  // gerar_imagem_beta
+  ["exposicao_html__gerar_imagem_beta","exposicao_html__BETA_FUNDS"],
+];
+
+// ── Cores por categoria ──────────────────────────────────────────────────────
+const CAT_COLOR = {
+  module:  { bg:"#1e2845", border:"#2a3a6a", font:"#6b7a99" },
+  main:    { bg:"#7c3a00", border:"#f59e42", font:"#f59e42" },
+  buscar:  { bg:"#0c2a3a", border:"#38bdf8", font:"#38bdf8" },
+  montar:  { bg:"#1e1040", border:"#a78bfa", font:"#a78bfa" },
+  gerar:   { bg:"#0a2a20", border:"#34d399", font:"#34d399" },
+  export:  { bg:"#2a0f18", border:"#fb7185", font:"#fb7185" },
+  util:    { bg:"#2a1e00", border:"#fbbf24", font:"#fbbf24" },
+  const:   { bg:"#1a1a2e", border:"#94a3b8", font:"#94a3b8" },
+  inner:   { bg:"#141928", border:"#475569", font:"#475569" },
+};
+
+// ── Build vis dataset ────────────────────────────────────────────────────────
+const allNodes = new vis.DataSet(RAW_NODES.map(n => {
+  const c = CAT_COLOR[n.kind] || CAT_COLOR.inner;
+  return {
+    id:    n.id,
+    label: n.label,
+    title: `<div style="font-size:12px;max-width:200px;padding:4px 0"><b>${n.label}</b><br>${n.tooltip}${n.line ? '<br><span style="color:#6b7a99">linha '+n.line+'</span>' : ''}</div>`,
+    cat:   n.kind,
+    line:  n.line,
+    tooltip: n.tooltip,
+    color: { background: c.bg, border: c.border, highlight: { background: c.bg, border: "#fff" } },
+    font:  { color: c.font, size: 13, face: "Segoe UI" },
+    shape: n.kind === "main" ? "star" : n.kind === "const" ? "diamond" : "ellipse",
+    size:  n.kind === "main" ? 28 : n.kind === "module" ? 22 : 18,
+    borderWidth: n.kind === "main" ? 3 : 2,
+  };
+}));
+
+const allEdges = new vis.DataSet(RAW_EDGES.map(([f, t], i) => ({
+  id: i, from: f, to: t,
+  arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+  color: { color: "#1e2845", highlight: "#EC7000", opacity: 0.8 },
+  width: 1.2,
+  smooth: { type: "curvedCW", roundness: 0.15 },
+})));
+
+// ── Network ──────────────────────────────────────────────────────────────────
+const container = document.getElementById("graph");
+const network = new vis.Network(container, { nodes: allNodes, edges: allEdges }, {
+  physics: {
+    enabled: true,
+    forceAtlas2Based: {
+      gravitationalConstant: -80,
+      centralGravity: 0.01,
+      springLength: 140,
+      springConstant: 0.06,
+      damping: 0.4,
+    },
+    solver: "forceAtlas2Based",
+    stabilization: { iterations: 180, updateInterval: 25 },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 150,
+    navigationButtons: false,
+    zoomView: true,
+  },
+  layout: { improvedLayout: false },
+});
+
+// ── Highlight on click ────────────────────────────────────────────────────────
+let selectedId = null;
+
+network.on("click", params => {
+  if (!params.nodes.length) { resetHighlight(); closeInfo(); selectedId = null; return; }
+  const nid = params.nodes[0];
+  selectedId = nid;
+  highlightNode(nid);
+  showInfo(nid);
+});
+
+function highlightNode(nid) {
+  const connected = new Set([nid]);
+  allEdges.get().forEach(e => {
+    if (e.from === nid) connected.add(e.to);
+    if (e.to   === nid) connected.add(e.from);
+  });
+
+  allNodes.get().forEach(n => {
+    const fade = !connected.has(n.id);
+    allNodes.update({ id: n.id, opacity: fade ? 0.15 : 1.0 });
+  });
+  allEdges.get().forEach(e => {
+    const active = (e.from === nid || e.to === nid);
+    allEdges.update({ id: e.id, color: { color: active ? "#EC7000" : "#0a0e1a", opacity: active ? 1 : 0.05 }, width: active ? 2.5 : 0.5 });
+  });
+}
+
+function resetHighlight() {
+  allNodes.get().forEach(n => allNodes.update({ id: n.id, opacity: 1 }));
+  allEdges.get().forEach(e => allEdges.update({ id: e.id, color: { color: "#1e2845", opacity: 0.8 }, width: 1.2 }));
+}
+
+// ── Info panel ───────────────────────────────────────────────────────────────
+function showInfo(nid) {
+  const node = RAW_NODES.find(n => n.id === nid);
+  if (!node) return;
+
+  document.getElementById("infoName").textContent = node.label.replace(/\n/g," ");
+  document.getElementById("infoType").textContent = node.kind;
+  document.getElementById("infoLine").textContent = node.line ? "L" + node.line : "—";
+  document.getElementById("infoCtx").textContent  = node.tooltip;
+
+  const calls   = allEdges.get().filter(e => e.from === nid).map(e => e.to);
+  const callers = allEdges.get().filter(e => e.to   === nid).map(e => e.from);
+
+  const renderList = (ids, el) => {
+    el.innerHTML = ids.length
+      ? ids.map(id => {
+          const n = RAW_NODES.find(x => x.id === id);
+          const label = n ? n.label.replace(/\n/g," ") : id;
+          return `<div class="info-call-item" onclick="focusNode('${id}')">${label}</div>`;
+        }).join("")
+      : `<div style="color:#2a3560;font-size:.72rem">nenhum</div>`;
+  };
+
+  renderList(calls,   document.getElementById("infoCalls"));
+  renderList(callers, document.getElementById("infoCallers"));
+  document.getElementById("infoPanel").classList.add("visible");
+}
+
+function closeInfo() { document.getElementById("infoPanel").classList.remove("visible"); }
+
+function focusNode(nid) {
+  network.focus(nid, { scale: 1.4, animation: { duration: 500, easingFunction: "easeInOutQuad" } });
+  network.selectNodes([nid]);
+  selectedId = nid;
+  highlightNode(nid);
+  showInfo(nid);
+}
+
+window.focusNode  = focusNode;
+window.closeInfo  = closeInfo;
+
+// ── Filter buttons ───────────────────────────────────────────────────────────
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const cat = btn.dataset.cat;
+    if (cat === "all") {
+      allNodes.get().forEach(n => allNodes.update({ id: n.id, hidden: false }));
+    } else {
+      allNodes.get().forEach(n => allNodes.update({ id: n.id, hidden: n.cat !== cat }));
+    }
+    resetHighlight();
+    closeInfo();
+  });
+});
+
+// ── Search ───────────────────────────────────────────────────────────────────
+document.getElementById("searchInp").addEventListener("input", e => {
+  const q = e.target.value.toLowerCase().trim();
+  if (!q) { allNodes.get().forEach(n => allNodes.update({ id: n.id, hidden: false })); resetHighlight(); return; }
+
+  const match = RAW_NODES.find(n => n.label.toLowerCase().includes(q) || n.id.toLowerCase().includes(q));
+  if (match) {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    document.querySelector('[data-cat="all"]').classList.add("active");
+    allNodes.get().forEach(n => allNodes.update({ id: n.id, hidden: false }));
+    focusNode(match.id);
+  }
+});
+
+// ── Fit ──────────────────────────────────────────────────────────────────────
+document.getElementById("btnFit").addEventListener("click", () => {
+  network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+  resetHighlight();
+  closeInfo();
+});
+
+network.on("stabilizationIterationsDone", () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+</script>
+</body>
+</html>
