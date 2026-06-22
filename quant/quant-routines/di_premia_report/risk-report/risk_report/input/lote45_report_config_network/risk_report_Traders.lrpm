@@ -1,0 +1,6 @@
+Folder=R:\Risk\01_DailyReports\01_01_Lote45_extract\Traders
+TradingDesks=2965;3307;1924;2533
+Reports=
+BookReports=Books Primitive VaR;Books Primitives Stress Report
+BookLevel=2
+MainReport=Traders

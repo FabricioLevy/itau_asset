@@ -1,0 +1,6 @@
+Folder=R:\Risk\01_DailyReports\01_01_Lote45_extract\Fund
+TradingDesks=2965;3307;1924;2533
+Reports=VaR & Stress;1 Day Primitives Covariance;1 Day Full Hist VaR
+BookReports=
+BookLevel=0
+MainReport=Main

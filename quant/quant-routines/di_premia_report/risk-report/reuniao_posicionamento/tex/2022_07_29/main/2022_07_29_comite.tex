@@ -1,0 +1,324 @@
+%----------------------------------------------%
+% Template Beamer para Apresentações da Asset1 %
+%                 %
+% Baseado em MIT Beamer Template			   %
+% versao 1.1								   %
+% Atualizado em 14/12/2021					   %
+%----------------------------------------------%
+% !TeX spellcheck = pt_BR
+\documentclass[t,aspectratio=169]{beamer}
+% Para alterar a linguagem do documento
+\usepackage[portuges]{babel}
+% Para aceitar caracteres especias deretamente do teclado
+\usepackage[utf8]{inputenc}
+% Para seguir as normas da ABNT de citacao e referencias
+\usepackage[alf]{abntex2cite}
+% Para incluir figuras
+\usepackage{graphicx}
+% Para melhor ajuste da posisao das figuras
+\usepackage{float}
+% Para ajustar as dimensoes do layout da pagina
+\usepackage{geometry}
+% Para formatar estrutura e informacoes de formulas matematicas
+\usepackage{amsmath}
+% Para incluir simbolos especiais em formulas matematicas
+\usepackage{amssymb}
+% Para incluir links nas referencias
+\usepackage{url}
+% Para incluir paginas de documentos .pdf externos
+\usepackage{pgfpages}
+% Para ajustar o estilo dos contadores
+\usepackage{enumerate}
+% Para modificar a cor do texto
+\usepackage{color}
+% Para incluir condicoes
+\usepackage{ifthen}
+% Para colocar legendas em algo que nao e float
+\usepackage{capt-of}
+
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+\usepackage{fontspec}
+\setmainfont[UprightFont={* Regular},BoldFont={* Bold},ItalicFont={* Medium}]{AmpleSoft Pro}
+
+\let\sfdefault\rmdefault
+
+% Para definir o tema do slide
+\usetheme{Berlin}
+% Para difinir cores e background
+\usecolortheme{Asset1}
+% Para numerar as figuras
+\setbeamertemplate{caption}[numbered]
+\beamertemplatenavigationsymbolsempty
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\dt{20220729}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Título
+\title[Reunião de Posicionamento]{
+	Reunião Semanal de Posicionamento}
+
+\titlegraphic{
+	\includegraphics[width=0.35\textwidth]{logo_Asset1}
+}
+
+% Data
+\date{\today}
+% Autores
+\author[\href{mailto:risco@asset1.com.br}{risco@asset1.com.br}]{
+	\href{mailto:mauricio.pereira@asset1.com.br}{Maurício Pereira}
+	\vspace{0.10cm}
+	%\href{mailto:tbd@asset1.com.br}{TBD}
+}
+% Logo do canto inferior direito
+\pgfdeclareimage[height=0.45cm]{logo_Asset1}{logo_Asset1}
+\logo{
+	\vspace*{-0.30cm}
+	\pgfuseimage{logo_Asset1}
+	\hspace*{-0.08cm}}
+
+
+\begin{document}
+
+%\frame{\titlepage}
+
+{
+	\setbeamertemplate{logo}{}
+	\begin{frame}
+		\maketitle
+	\end{frame}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Agenda}
+\begin{frame}{Agenda}
+	\tableofcontents
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section[Liquidez]{Controles de Liquidez}
+\begin{frame}{Liquidez (I) - Descasamento Ativo x Passivo}
+	\begin{overlayarea}{\textwidth}{\textheight}
+	\begin{columns}[T]
+		\column[T]{0.75\linewidth}
+	\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_liquidity_mismatch.pdf} 
+		
+		\column[T]{0.25\linewidth}
+	\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_liquidity_table.pdf} 
+		
+	\end{columns}
+\end{overlayarea}
+\end{frame}
+
+\begin{frame}{Liquidez (II) - Margem depositada}
+	\begin{overlayarea}{\textwidth}{\textheight}
+		\begin{columns}[T]
+		\column[T]{0.34\linewidth}
+		\centering
+		{\color{blue1}A1 Master FIM}
+		\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_margem_hist.pdf} 
+		\column[T]{0.33\linewidth}
+		\centering
+		{\color{blue1}A1 Orange FIM} 
+		\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Orange FIM_margem_hist.pdf} 
+		\column[T]{0.33\linewidth}
+		\centering
+		{\color{blue1}A1 FIFE BEM}
+		\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 FIFE BEM_margem_hist.pdf} 			
+		\end{columns}
+	\end{overlayarea}
+\end{frame}
+
+\begin{frame}{Liquidez (III) - Rolagem FX}
+	\centering
+	\includegraphics[width=0.80\linewidth]{../figuras/\dt_A1 Master FIM_rolagem.pdf} 	
+\end{frame}
+
+\begin{frame}{Liquidez (IV) - Ações e Futuros da \emph{B3}}
+	\begin{overlayarea}{\textwidth}{\textheight}
+	\begin{columns}[T]
+		\column[T]{0.34\linewidth}
+		\includegraphics[width=0.92\linewidth]{../figuras/\dt_A1 Master FIM_b3_turnover.pdf} 
+		\column[T]{0.66\linewidth}
+		
+			\begin{columns}[T]
+			\column[T]{0.25\linewidth}
+			\centering
+			{\color{blue1}DI}
+			\includegraphics[width=0.99\linewidth]{../figuras/\dt_b3_A1 Master FIM_DI1Future.pdf}
+			
+			\column[T]{0.25\linewidth}
+			\centering
+			{\color{blue1}DAP}
+			\includegraphics[width=0.99\linewidth]{../figuras/\dt_b3_A1 Master FIM_DAP Future.pdf}	
+					
+			\column[T]{0.25\linewidth}
+			\centering
+			{\color{blue1}DDI}
+			\includegraphics[width=0.99\linewidth]{../figuras/\dt_b3_A1 Master FIM_DDI Future.pdf}
+			
+			\column[T]{0.25\linewidth}
+			\centering
+			{\color{blue1}DOL Future}
+			\includegraphics[width=0.90\linewidth]{../figuras/\dt_b3_A1 Master FIM_USDBRLFuture.pdf}
+			\newline
+			
+			{\color{blue1}IBOV Future}
+			\includegraphics[width=0.90\linewidth]{../figuras/\dt_b3_A1 Master FIM_IBOVSPFuture.pdf}
+			\end{columns}
+		
+		
+	    %\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_b3_fut_liquidity.pdf} 
+	\end{columns}
+\end{overlayarea}
+\end{frame}
+
+\begin{frame}{Liquidez (V) - \emph{Liquidity VaR} de Ações}
+	\centering
+	\includegraphics[width=0.75\linewidth]{../figuras/\dt_A1 Master FIM_equity_trader_breakdown.pdf} 	
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section[Carteira]{Quebra de Risco da Carteira}
+\begin{frame}{Quebra de Risco da Carteira}
+	\centering
+	\includegraphics[width=0.99\linewidth]{../figuras/\dt_hist_var.pdf}
+\end{frame}
+
+\begin{frame}{Coeficiente de Diversificação do Fundo}
+	\begin{overlayarea}{\textwidth}{\textheight}
+		
+		\begin{columns}[T]
+			\column[T]{0.5\linewidth}
+			\centering
+			{\color{blue1}\textbf{Fator de Risco}}
+			\includegraphics[width=0.9\linewidth]{../figuras/\dt_diversification.pdf} 
+			
+			\column[T]{0.5\linewidth}
+			\centering
+			{\color{blue1}\textbf{Gestor}}
+			\includegraphics[width=0.9\linewidth]{../figuras/\dt_diversification_PM.pdf}				
+		\end{columns}
+	\end{overlayarea}	
+\end{frame}
+ 
+
+\begin{frame}{Fundo - VaR e Volatilidade}
+	\begin{overlayarea}{\textwidth}{\textheight}
+	\begin{columns}[T]
+		\column[T]{0.5\linewidth}
+		\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_var_vol.pdf} 
+		\column[T]{0.5\linewidth}
+		\includegraphics[width=0.99\linewidth]{../figuras/\dt_var_breakdown.pdf} 
+	\end{columns}
+\end{overlayarea}
+\end{frame}
+
+\begin{frame}{Volatilidade Fatores de Risco}
+	\centering
+	\includegraphics[width=0.99\linewidth]{../figuras/\dt_vol_fator.pdf} 	
+\end{frame}
+
+\begin{frame}{Fundo - VaR Histórico simulado (15 anos)}
+	\centering
+	\includegraphics[width=0.90\linewidth]{../figuras/\dt_fund_var_level.pdf} 	
+\end{frame}
+
+\begin{frame}{PMs - VaR Histórico simulado (15 anos)}
+	\centering
+	\includegraphics[width=0.95\linewidth]{../figuras/\dt_trader_var_level.pdf} 	
+\end{frame}
+
+\begin{frame}{Correlação com retornos simulados - \emph{Carteira estática de D-1}}
+	\centering
+	\includegraphics[width=0.95\linewidth]{../figuras/\dt_simu_correl.pdf} 	
+\end{frame}
+
+\begin{frame}{Perf. acumulada dos retornos simulados - \emph{Carteira estática de D-1}}
+	\centering
+	\includegraphics[width=0.95\linewidth]{../figuras/\dt_simu_correl_retacum.pdf} 	
+\end{frame}
+
+\begin{frame}{Exposição \emph{USDBRL}}
+	\centering
+	\includegraphics[width=0.66\linewidth]{../figuras/\dt_A1 Master FIM_usdbrl_simu_trader.pdf} 	
+\end{frame}
+
+\begin{frame}{Exposição Bolsa \emph{Onshore x Offshore}}
+	\centering
+	\includegraphics[width=0.35\linewidth]{../figuras/\dt_A1 Master FIM_donut_on_off_equity.pdf} 	
+\end{frame}
+
+\begin{frame}{Exposição Bolsa \emph{Onshore}}
+	\centering
+	\includegraphics[width=0.58\linewidth]{../figuras/\dt_A1 Master FIM_trader_IBOV_simulation.pdf} 	
+\end{frame}
+
+\begin{frame}{Exposição Bolsa \emph{Onshore} - Breakdown}
+	\centering
+	\includegraphics[width=0.45\linewidth]{../figuras/\dt_A1 Master FIM_equity_breakdown.pdf}
+\end{frame}
+
+\begin{frame}{Exposição Bolsa \emph{Offhore} - Breakdown}
+	\centering
+	\includegraphics[width=0.5\linewidth]{../figuras/\dt_A1 Master FIM_equity_breakdown_offshore.pdf}
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section[Trade Ideas]{Trade Ideas}
+\begin{frame}{Controle de Trade Ideas (I)}
+	\centering
+%	\includegraphics[width=0.9\linewidth]{../figuras/\dt_trade_idea_table_aberto.pdf} 	
+\end{frame}
+
+\begin{frame}{Controle de Trade Ideas (II) - Não realizado}
+	\centering
+	\includegraphics[width=0.9\linewidth]{../figuras/\dt_mock_trade_idea_table_aberto.pdf}  
+\end{frame}
+
+
+\begin{frame}{Controle de Trade Ideas (III)}
+	\centering
+	\includegraphics[width=0.7\linewidth]{../figuras/\dt_trade_idea_table_fechado.pdf}  
+\end{frame}
+
+\begin{frame}{Controle de Trade Ideas (IV) - Não realizado}
+	\centering
+%	\includegraphics[width=0.9\linewidth]{../figuras/\dt_mock_trade_idea_table_fechado.pdf}  
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section[Performance]{Performance dos Gestores}
+ \begin{frame}{Risco por PM (I)}
+ 	\centering
+ 	\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_trader_var_stress.pdf} 
+\end{frame}
+
+\begin{frame}{Risco por PM (II)}
+    \centering
+ 	\includegraphics[width=0.95\linewidth]{../figuras/\dt_trader_var_vol.pdf} 
+\end{frame}
+
+\begin{frame}{Risco por PM (III) - Vol PM x Vol Peers}
+	\centering
+	\includegraphics[width=0.95\linewidth]{../figuras/\dt_peers_vol.pdf} 
+\end{frame}
+
+ \begin{frame}{Rendimento por PM (ITD)}
+ 	\centering
+ 	\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_trader_2_maptree.pdf} 
+\end{frame}
+
+ \begin{frame}{Rendimento por PM (STD)}
+ 	\centering
+ 	\includegraphics[width=0.99\linewidth]{../figuras/\dt_A1 Master FIM_trader_retvol_std.pdf} 
+\end{frame}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\section[Outros]{Outros Assuntos Relevantes}
+%\begin{frame}{}
+%\end{frame}
+
+\end{document}

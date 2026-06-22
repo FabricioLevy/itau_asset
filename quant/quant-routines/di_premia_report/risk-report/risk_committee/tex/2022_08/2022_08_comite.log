@@ -1,0 +1,1907 @@
+This is LuaHBTeX, Version 1.14.0 (MiKTeX 21.6) (format=lualatex 2021.12.15)  8 SEP 2022 16:58
+ restricted system commands enabled.
+**2022_08_comite.tex
+(./2022_08_comite.tex
+LaTeX2e <2021-06-01>
+Lua module: luaotfload 2021-05-21 3.18 Lua based OpenType font support
+Lua module: lualibs 2021-05-20 2.74 ConTeXt Lua standard libraries.
+Lua module: lualibs-extended 2021-05-20 2.74 ConTeXt Lua libraries -- extended c
+ollection.
+luaotfload | conf : Root cache directory is "C:/Users/mauricio.pereira/AppData/L
+ocal/MiKTeX/2.9/luatex-cache/generic/names".
+luaotfload | init : Loading fontloader "fontloader-2021-05-20.lua" from kpse-res
+olved path "C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/luat
+ex/luaotfload/fontloader-2021-05-20.lua".
+Lua-only attribute luaotfload@noligature = 1
+Lua-only attribute luaotfload@syllabe = 2
+luaotfload | init : Context OpenType loader version 3.116
+Inserting `luaotfload.node_processor' at position 1 in `pre_linebreak_filter'.
+Inserting `luaotfload.node_processor' at position 1 in `hpack_filter'.
+Inserting `luaotfload.glyph_stream' at position 1 in `glyph_stream_provider'.
+Inserting `luaotfload.define_font' at position 1 in `define_font'.
+Lua-only attribute luaotfload_color_attribute = 3
+luaotfload | conf : Root cache directory is "C:/Users/mauricio.pereira/AppData/L
+ocal/MiKTeX/2.9/luatex-cache/generic/names".
+Inserting `luaotfload.harf.strip_prefix' at position 1 in `find_opentype_file'.
+Inserting `luaotfload.harf.strip_prefix' at position 1 in `find_truetype_file'.
+Inserting `luaotfload.harf.finalize_vlist' at position 1 in `post_linebreak_filt
+er'.
+Inserting `luaotfload.harf.finalize_hlist' at position 2 in `hpack_filter'.
+Inserting `luaotfload.cleanup_files' at position 1 in `wrapup_run'.
+Inserting `luaotfload.harf.finalize_unicode' at position 1 in `finish_pdffile'.
+Inserting `luaotfload.glyphinfo' at position 1 in `glyph_info'.
+Lua-only attribute luaotfload.letterspace_done = 4
+Inserting `luaotfload.aux.set_sscale_dimens' at position 1 in `luaotfload.patch_
+font'.
+Inserting `luaotfload.aux.set_font_index' at position 2 in `luaotfload.patch_fon
+t'.
+Inserting `luaotfload.aux.patch_cambria_domh' at position 3 in `luaotfload.patch
+_font'.
+Inserting `luaotfload.aux.fixup_fontdata' at position 1 in `luaotfload.patch_fon
+t_unsafe'.
+Inserting `luaotfload.aux.set_capheight' at position 4 in `luaotfload.patch_font
+'.
+Inserting `luaotfload.aux.set_xheight' at position 5 in `luaotfload.patch_font'.
+Inserting `luaotfload.rewrite_fontname' at position 6 in `luaotfload.patch_font'
+. L3 programming layer <2021-06-01>
+Inserting `tracingstacklevels' at position 1 in `input_level_string'.
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamer.cls"
+Document Class: beamer 2021/10/18 v3.64 A class for typesetting presentations
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasemodes.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/etoolbo
+x/etoolbox.sty"
+Package: etoolbox 2020/10/05 v2.5k e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count179
+)
+\beamer@tempbox=\box50
+\beamer@tempcount=\count180
+\c@beamerpauses=\count181
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasedecode.sty"
+\beamer@slideinframe=\count182
+\beamer@minimum=\count183
+\beamer@decode@box=\box51
+)
+\beamer@commentbox=\box52
+\beamer@modecount=\count184
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/iftex
+/ifpdf.sty"
+Package: ifpdf 2019/10/25 v3.4 ifpdf legacy package. Use iftex instead.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/iftex
+/iftex.sty"
+Package: iftex 2020/03/06 v1.0d TeX engine tests
+))
+\headdp=\dimen138
+\footheight=\dimen139
+\sidebarheight=\dimen140
+\beamer@tempdim=\dimen141
+\beamer@finalheight=\dimen142
+\beamer@animht=\dimen143
+\beamer@animdp=\dimen144
+\beamer@animwd=\dimen145
+\beamer@leftmargin=\dimen146
+\beamer@rightmargin=\dimen147
+\beamer@leftsidebar=\dimen148
+\beamer@rightsidebar=\dimen149
+\beamer@boxsize=\dimen150
+\beamer@vboxoffset=\dimen151
+\beamer@descdefault=\dimen152
+\beamer@descriptionwidth=\dimen153
+\beamer@lastskip=\skip47
+\beamer@areabox=\box53
+\beamer@animcurrent=\box54
+\beamer@animshowbox=\box55
+\beamer@sectionbox=\box56
+\beamer@logobox=\box57
+\beamer@linebox=\box58
+\beamer@sectioncount=\count185
+\beamer@subsubsectionmax=\count186
+\beamer@subsectionmax=\count187
+\beamer@sectionmax=\count188
+\beamer@totalheads=\count189
+\beamer@headcounter=\count190
+\beamer@partstartpage=\count191
+\beamer@sectionstartpage=\count192
+\beamer@subsectionstartpage=\count193
+\beamer@animationtempa=\count194
+\beamer@animationtempb=\count195
+\beamer@xpos=\count196
+\beamer@ypos=\count197
+\beamer@ypos@offset=\count198
+\beamer@showpartnumber=\count199
+\beamer@currentsubsection=\count266
+\beamer@coveringdepth=\count267
+\beamer@sectionadjust=\count268
+\beamer@toclastsection=\count269
+\beamer@tocsectionnumber=\count270
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseoptions.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s/keyval.sty"
+Package: keyval 2014/10/28 v1.15 key=value parser (DPC)
+\KV@toks@=\toks16
+))
+\beamer@paperwidth=\skip48
+\beamer@paperheight=\skip49
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/geometr
+y/geometry.sty"
+Package: geometry 2020/01/02 v5.9 Page Geometry
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/iftex
+/ifvtex.sty"
+Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
+)
+\Gm@cnth=\count271
+\Gm@cntv=\count272
+\c@Gm@tempcnt=\count273
+\Gm@bindingoffset=\dimen154
+\Gm@wd@mp=\dimen155
+\Gm@odd@mp=\dimen156
+\Gm@even@mp=\dimen157
+\Gm@layoutwidth=\dimen158
+\Gm@layoutheight=\dimen159
+\Gm@layouthoffset=\dimen160
+\Gm@layoutvoffset=\dimen161
+\Gm@dimlist=\toks17
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/geometr
+y/geometry.cfg"))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/si
+ze11.clo"
+File: size11.clo 2021/02/12 v1.4n Standard LaTeX file (size option)
+luaotfload | db : Font names database loaded from C:/Users/mauricio.pereira/AppD
+ata/Local/MiKTeX/2.9/luatex-cache/generic/names/luaotfload-names.luc)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/pgf/bas
+iclayer/pgfcore.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s/graphicx.sty"
+Package: graphicx 2020/12/05 v1.2c Enhanced LaTeX Graphics (DPC,SPQR)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s/graphics.sty"
+Package: graphics 2021/03/04 v1.4d Standard LaTeX Graphics (DPC,SPQR)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s/trig.sty"
+Package: trig 2016/01/03 v1.10 sin cos tan (DPC)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s-cfg/graphics.cfg"
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: luatex.def on input line 107.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s-def/luatex.def"
+File: luatex.def 2021/06/01 v1.2c Graphics/color driver for luatex
+))
+\Gin@req@height=\dimen162
+\Gin@req@width=\dimen163
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/pgf/sys
+temlayer/pgfsys.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/pgf/uti
+lities/pgfrcs.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/u
+tilities/pgfutil-common.tex"
+\pgfutil@everybye=\toks18
+\pgfutil@tempdima=\dimen164
+\pgfutil@tempdimb=\dimen165
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/u
+tilities/pgfutil-common-lists.tex"))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/u
+tilities/pgfutil-latex.def"
+\pgfutil@abb=\box59
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/u
+tilities/pgfrcs.code.tex"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/p
+gf.revision.tex")
+Package: pgfrcs 2021/05/15 v3.1.9a (3.1.9a)
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/s
+ystemlayer/pgfsys.code.tex"
+Package: pgfsys 2021/05/15 v3.1.9a (3.1.9a)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/u
+tilities/pgfkeys.code.tex"
+\pgfkeys@pathtoks=\toks19
+\pgfkeys@temptoks=\toks20
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/u
+tilities/pgfkeysfiltered.code.tex"
+\pgfkeys@tmptoks=\toks21
+))
+\pgf@x=\dimen166
+\pgf@y=\dimen167
+\pgf@xa=\dimen168
+\pgf@ya=\dimen169
+\pgf@xb=\dimen170
+\pgf@yb=\dimen171
+\pgf@xc=\dimen172
+\pgf@yc=\dimen173
+\pgf@xd=\dimen174
+\pgf@yd=\dimen175
+\w@pgf@writea=\write3
+\r@pgf@reada=\read2
+\c@pgf@counta=\count274
+\c@pgf@countb=\count275
+\c@pgf@countc=\count276
+\c@pgf@countd=\count277
+\t@pgf@toka=\toks22
+\t@pgf@tokb=\toks23
+\t@pgf@tokc=\toks24
+\pgf@sys@id@count=\count278
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/s
+ystemlayer/pgf.cfg"
+File: pgf.cfg 2021/05/15 v3.1.9a (3.1.9a)
+)
+Driver file for pgf: pgfsys-luatex.def
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/s
+ystemlayer/pgfsys-luatex.def"
+File: pgfsys-luatex.def 2021/05/15 v3.1.9a (3.1.9a)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/s
+ystemlayer/pgfsys-common-pdf.def"
+File: pgfsys-common-pdf.def 2021/05/15 v3.1.9a (3.1.9a)
+)))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/s
+ystemlayer/pgfsyssoftpath.code.tex"
+File: pgfsyssoftpath.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgfsyssoftpath@smallbuffer@items=\count279
+\pgfsyssoftpath@bigbuffer@items=\count280
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/s
+ystemlayer/pgfsysprotocol.code.tex"
+File: pgfsysprotocol.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/xcolor/
+xcolor.sty"
+Package: xcolor 2016/05/11 v2.12 LaTeX color extensions (UK)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/graphic
+s-cfg/color.cfg"
+File: color.cfg 2016/01/02 v1.6 sample color configuration
+)
+Package xcolor Info: Driver file: luatex.def on input line 225.
+Package xcolor Info: Model `cmy' substituted by `cmy0' on input line 1348.
+Package xcolor Info: Model `hsb' substituted by `rgb' on input line 1352.
+Package xcolor Info: Model `RGB' extended on input line 1364.
+Package xcolor Info: Model `HTML' substituted by `rgb' on input line 1366.
+Package xcolor Info: Model `Hsb' substituted by `hsb' on input line 1367.
+Package xcolor Info: Model `tHsb' substituted by `hsb' on input line 1368.
+Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1369.
+Package xcolor Info: Model `Gray' substituted by `gray' on input line 1370.
+Package xcolor Info: Model `wave' substituted by `hsb' on input line 1371.
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcore.code.tex"
+Package: pgfcore 2021/05/15 v3.1.9a (3.1.9a)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmath.code.tex"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathcalc.code.tex"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathutil.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathparser.code.tex"
+\pgfmath@dimen=\dimen176
+\pgfmath@count=\count281
+\pgfmath@box=\box60
+\pgfmath@toks=\toks25
+\pgfmath@stack@operand=\toks26
+\pgfmath@stack@operation=\toks27
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.code.tex"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.basic.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.trigonometric.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.random.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.comparison.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.base.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.round.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.misc.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfunctions.integerarithmetics.code.tex")))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfmathfloat.code.tex"
+\c@pgfmathroundto@lastzeros=\count282
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/m
+ath/pgfint.code.tex")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorepoints.code.tex"
+File: pgfcorepoints.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgf@picminx=\dimen177
+\pgf@picmaxx=\dimen178
+\pgf@picminy=\dimen179
+\pgf@picmaxy=\dimen180
+\pgf@pathminx=\dimen181
+\pgf@pathmaxx=\dimen182
+\pgf@pathminy=\dimen183
+\pgf@pathmaxy=\dimen184
+\pgf@xx=\dimen185
+\pgf@xy=\dimen186
+\pgf@yx=\dimen187
+\pgf@yy=\dimen188
+\pgf@zx=\dimen189
+\pgf@zy=\dimen190
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorepathconstruct.code.tex"
+File: pgfcorepathconstruct.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgf@path@lastx=\dimen191
+\pgf@path@lasty=\dimen192
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorepathusage.code.tex"
+File: pgfcorepathusage.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgf@shorten@end@additional=\dimen193
+\pgf@shorten@start@additional=\dimen194
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorescopes.code.tex"
+File: pgfcorescopes.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgfpic=\box61
+\pgf@hbox=\box62
+\pgf@layerbox@main=\box63
+\pgf@picture@serial@count=\count283
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoregraphicstate.code.tex"
+File: pgfcoregraphicstate.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgflinewidth=\dimen195
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoretransformations.code.tex"
+File: pgfcoretransformations.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgf@pt@x=\dimen196
+\pgf@pt@y=\dimen197
+\pgf@pt@temp=\dimen198
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorequick.code.tex"
+File: pgfcorequick.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoreobjects.code.tex"
+File: pgfcoreobjects.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorepathprocessing.code.tex"
+File: pgfcorepathprocessing.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorearrows.code.tex"
+File: pgfcorearrows.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgfarrowsep=\dimen199
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoreshade.code.tex"
+File: pgfcoreshade.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgf@max=\dimen256
+\pgf@sys@shading@range@num=\count284
+\pgf@shadingcount=\count285
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoreimage.code.tex"
+File: pgfcoreimage.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoreexternal.code.tex"
+File: pgfcoreexternal.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+\pgfexternal@startupbox=\box64
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorelayers.code.tex"
+File: pgfcorelayers.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcoretransparency.code.tex"
+File: pgfcoretransparency.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorepatterns.code.tex"
+File: pgfcorepatterns.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pgf/b
+asiclayer/pgfcorerdf.code.tex"
+File: pgfcorerdf.code.tex 2021/05/15 v3.1.9a (3.1.9a)
+)))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/pgf/uti
+lities/xxcolor.sty"
+Package: xxcolor 2003/10/24 ver 0.1
+\XC@nummixins=\count286
+\XC@countmixins=\count287
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/at
+begshi-ltx.sty"
+Package: atbegshi-ltx 2021/01/10 v1.0c Emulation of the original atbegshi
+package with kernel methods
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hyperre
+f/hyperref.sty"
+Package: hyperref 2021-06-07 v7.00m Hypertext links for LaTeX
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/ltxcm
+ds/ltxcmds.sty"
+Package: ltxcmds 2020-05-10 v1.25 LaTeX kernel commands for general use (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pdfte
+xcmds/pdftexcmds.sty"
+Package: pdftexcmds 2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO
+)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/infwa
+rerr/infwarerr.sty"
+Package: infwarerr 2019/12/03 v1.5 Providing info/warning/error messages (HO)
+)
+Package pdftexcmds Info: \pdf@primitive is available.
+Package pdftexcmds Info: \pdf@ifprimitive is available.
+Package pdftexcmds Info: \pdfdraftmode found.
+\pdftexcmds@toks=\toks28
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/kvset
+keys/kvsetkeys.sty"
+Package: kvsetkeys 2019/12/15 v1.18 Key value parser (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/kvdef
+inekeys/kvdefinekeys.sty"
+Package: kvdefinekeys 2019-12-19 v1.6 Define keys (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/pdfes
+cape/pdfescape.sty"
+Package: pdfescape 2019/12/09 v1.15 Implements pdfTeX's escape features (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hycolor
+/hycolor.sty"
+Package: hycolor 2020-01-27 v1.10 Color options for hyperref/bookmark (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/letltxm
+acro/letltxmacro.sty"
+Package: letltxmacro 2019/12/03 v1.6 Let assignment for LaTeX macros (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/auxhook
+/auxhook.sty"
+Package: auxhook 2019-12-17 v1.6 Hooks for auxiliary files (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/kvoptio
+ns/kvoptions.sty"
+Package: kvoptions 2020-10-07 v3.14 Key value format for package options (HO)
+)
+\@linkdim=\dimen257
+\Hy@linkcounter=\count288
+\Hy@pagecounter=\count289
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hyperre
+f/pd1enc.def"
+File: pd1enc.def 2021-06-07 v7.00m Hyperref: PDFDocEncoding definition (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hyperre
+f/hyperref-langpatches.def"
+File: hyperref-langpatches.def 2021-06-07 v7.00m Hyperref: patches for babel la
+nguages
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/intca
+lc/intcalc.sty"
+Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/etexc
+mds/etexcmds.sty"
+Package: etexcmds 2019/12/15 v1.7 Avoid name clashes with e-TeX commands (HO)
+)
+\Hy@SavedSpaceFactor=\count290
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hyperre
+f/puenc.def"
+File: puenc.def 2021-06-07 v7.00m Hyperref: PDF Unicode definition (HO)
+)
+Package hyperref Info: Option `bookmarks' set `true' on input line 4073.
+Package hyperref Info: Option `bookmarksopen' set `true' on input line 4073.
+Package hyperref Info: Option `implicit' set `false' on input line 4073.
+Package hyperref Info: Hyper figures OFF on input line 4192.
+Package hyperref Info: Link nesting OFF on input line 4197.
+Package hyperref Info: Hyper index ON on input line 4200.
+Package hyperref Info: Plain pages OFF on input line 4207.
+Package hyperref Info: Backreferencing OFF on input line 4212.
+Package hyperref Info: Implicit mode OFF; no redefinition of LaTeX internals.
+Package hyperref Info: Bookmarks ON on input line 4445.
+\c@Hy@tempcnt=\count291
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/url/url
+.sty"
+\Urlmuskip=\muskip16
+Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
+)
+LaTeX Info: Redefining \url on input line 4804.
+\XeTeXLinkMargin=\dimen258
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/bitse
+t/bitset.sty"
+Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/bigin
+tcalc/bigintcalc.sty"
+Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO
+)
+))
+\Fld@menulength=\count292
+\Field@Width=\dimen259
+\Fld@charsize=\dimen260
+Package hyperref Info: Hyper figures OFF on input line 6076.
+Package hyperref Info: Link nesting OFF on input line 6081.
+Package hyperref Info: Hyper index ON on input line 6084.
+Package hyperref Info: backreferencing OFF on input line 6091.
+Package hyperref Info: Link coloring OFF on input line 6096.
+Package hyperref Info: Link coloring with OCG OFF on input line 6101.
+Package hyperref Info: PDF/A mode OFF on input line 6106.
+LaTeX Info: Redefining \ref on input line 6146.
+LaTeX Info: Redefining \pageref on input line 6150.
+\Hy@abspage=\count293
+
+
+Package hyperref Message: Stopped early.
+
+)
+Package hyperref Info: Driver (autodetected): hluatex.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hyperre
+f/hluatex.def"
+File: hluatex.def 2021-06-07 v7.00m Hyperref driver for luaTeX
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/strin
+genc/stringenc.sty"
+Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO
+)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/at
+veryend-ltx.sty"
+Package: atveryend-ltx 2020/08/19 v1.0a Emulation of the original atvery packag
+e
+with kernel methods
+)
+\Fld@listcount=\count294
+\c@bookmark@seq@number=\count295
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/rerunfi
+lecheck/rerunfilecheck.sty"
+Package: rerunfilecheck 2019/12/05 v1.9 Rerun checks for auxiliary files (HO)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/uniqu
+ecounter/uniquecounter.sty"
+Package: uniquecounter 2019/12/15 v1.4 Provide unlimited unique counter (HO)
+)
+Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 2
+86.
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaserequires.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasecompatibility.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasefont.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsfont
+s/amssymb.sty"
+Package: amssymb 2013/01/14 v3.01 AMS font symbols
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsfont
+s/amsfonts.sty"
+Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
+\@emptytoks=\toks29
+\symAMSa=\mathgroup4
+\symAMSb=\mathgroup5
+LaTeX Font Info:    Redeclaring math symbol \hbar on input line 98.
+LaTeX Font Info:    Overwriting math alphabet `\mathfrak' in version `bold'
+(Font)                  U/euf/m/n --> U/euf/b/n on input line 106.
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/sansmat
+haccent/sansmathaccent.sty"
+Package: sansmathaccent 2020/01/31
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/koma-sc
+ript/scrlfile.sty"
+Package: scrlfile 2021/03/17 v3.33 KOMA-Script package (file load hooks)
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/koma-sc
+ript/scrlfile-hook.sty"
+Package: scrlfile-hook 2021/03/17 v3.33 KOMA-Script package (using LaTeX hooks)
+
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/koma-sc
+ript/scrlogo.sty"
+Package: scrlogo 2021/03/17 v3.33 KOMA-Script package (logo)
+)))))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasetranslator.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator.sty"
+Package: translator 2021-05-31 v1.12d Easy translation of strings in LaTeX
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasemisc.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasetwoscreens.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseoverlay.sty"
+\beamer@argscount=\count296
+\beamer@lastskipcover=\skip50
+\beamer@trivlistdepth=\count297
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasetitle.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasesection.sty"
+\c@lecture=\count298
+\c@part=\count299
+\c@section=\count300
+\c@subsection=\count301
+\c@subsubsection=\count302
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseframe.sty"
+\beamer@framebox=\box65
+\beamer@frametitlebox=\box66
+\beamer@zoombox=\box67
+\beamer@zoomcount=\count303
+\beamer@zoomframecount=\count304
+\beamer@frametextheight=\dimen261
+\c@subsectionslide=\count305
+\beamer@frametopskip=\skip51
+\beamer@framebottomskip=\skip52
+\beamer@frametopskipautobreak=\skip53
+\beamer@framebottomskipautobreak=\skip54
+\beamer@envbody=\toks30
+\framewidth=\dimen262
+\c@framenumber=\count306
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseverbatim.sty"
+\beamer@verbatimfileout=\write4
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseframesize.sty"
+\beamer@splitbox=\box68
+\beamer@autobreakcount=\count307
+\beamer@autobreaklastheight=\dimen263
+\beamer@frametitletoks=\toks31
+\beamer@framesubtitletoks=\toks32
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseframecomponents.sty"
+\beamer@footins=\box69
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasecolor.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasenotes.sty"
+\beamer@frameboxcopy=\box70
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasetoc.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasetemplates.sty"
+\beamer@sbttoks=\toks33
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseauxtemplates.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaseboxes.sty"
+\bmb@box=\box71
+\bmb@colorbox=\box72
+\bmb@boxwidth=\dimen264
+\bmb@boxheight=\dimen265
+\bmb@prevheight=\dimen266
+\bmb@temp=\dimen267
+\bmb@dima=\dimen268
+\bmb@dimb=\dimen269
+\bmb@prevheight=\dimen270
+)
+\beamer@blockheadheight=\dimen271
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbaselocalstructure.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/tools/e
+numerate.sty"
+Package: enumerate 2015/07/23 v3.00 enumerate extensions (DPC)
+\@enLab=\toks34
+)
+\beamer@bibiconwidth=\skip55
+\c@figure=\count308
+\c@table=\count309
+\abovecaptionskip=\skip56
+\belowcaptionskip=\skip57
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasenavigation.sty"
+\beamer@section@min@dim=\dimen272
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasetheorems.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsmath
+/amsmath.sty"
+Package: amsmath 2021/04/20 v2.17j AMS math features
+\@mathmargin=\skip58
+
+For additional information on amsmath, use the `?' option.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsmath
+/amstext.sty"
+Package: amstext 2000/06/29 v2.01 AMS text
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsmath
+/amsgen.sty"
+File: amsgen.sty 1999/11/30 v2.0 generic functions
+\@emptytoks=\toks35
+\ex@=\dimen273
+))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsmath
+/amsbsy.sty"
+Package: amsbsy 1999/11/29 v1.2d Bold Symbols
+\pmbraise@=\dimen274
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsmath
+/amsopn.sty"
+Package: amsopn 2016/03/08 v2.02 operator names
+)
+\inf@bad=\count310
+LaTeX Info: Redefining \frac on input line 236.
+\uproot@=\count311
+\leftroot@=\count312
+LaTeX Info: Redefining \overline on input line 399.
+\classnum@=\count313
+\DOTSCASE@=\count314
+LaTeX Info: Redefining \ldots on input line 496.
+LaTeX Info: Redefining \dots on input line 499.
+LaTeX Info: Redefining \cdots on input line 620.
+\Mathstrutbox@=\box73
+\strutbox@=\box74
+\big@size=\dimen275
+LaTeX Font Info:    Redeclaring font encoding OML on input line 743.
+LaTeX Font Info:    Redeclaring font encoding OMS on input line 744.
+\macc@depth=\count315
+\c@MaxMatrixCols=\count316
+\dotsspace@=\muskip17
+\c@parentequation=\count317
+\dspbrk@lvl=\count318
+\tag@help=\toks36
+\row@=\count319
+\column@=\count320
+\maxfields@=\count321
+\andhelp@=\toks37
+\eqnshift@=\dimen276
+\alignsep@=\dimen277
+\tagshift@=\dimen278
+\tagwidth@=\dimen279
+\totwidth@=\dimen280
+\lineht@=\dimen281
+\@envbody=\toks38
+\multlinegap=\skip59
+\multlinetaggap=\skip60
+\mathdisplay@stack=\toks39
+LaTeX Info: Redefining \[ on input line 2923.
+LaTeX Info: Redefining \] on input line 2924.
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amscls/
+amsthm.sty"
+Package: amsthm 2020/05/29 v2.20.6
+\thm@style=\toks40
+\thm@bodyfont=\toks41
+\thm@headfont=\toks42
+\thm@notefont=\toks43
+\thm@headpunct=\toks44
+\thm@preskip=\skip61
+\thm@postskip=\skip62
+\thm@headsep=\skip63
+\dth@everypar=\toks45
+)
+\c@theorem=\count322
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerbasethemes.sty"))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerthemedefault.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerfontthemedefault.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamercolorthemedefault.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerinnerthemedefault.sty"
+\beamer@dima=\dimen282
+\beamer@dimb=\dimen283
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerouterthemedefault.sty")))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/babel
+/babel.sty"
+Package: babel 2021/06/02 3.60 The Babel package
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/babel
+/babel.def"
+File: babel.def 2021/06/02 3.60 Babel common definitions
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/babel
+/luababel.def"
+\bbl@readstream=\read3
+\l@afrikaans=\language2
+Package babel Info: Non-standard hyphenation setup on input line 118.
+\l@ancientgreek=\language3
+\l@armenian=\language4
+\l@assamese=\language5
+\l@basque=\language6
+\l@belarusian=\language7
+\l@bengali=\language8
+\l@bokmal=\language9
+\l@bulgarian=\language10
+\l@catalan=\language11
+\l@churchslavonic=\language12
+\l@classiclatin=\language13
+\l@coptic=\language14
+\l@croatian=\language15
+\l@czech=\language16
+\l@danish=\language17
+\l@dutch=\language18
+\l@esperanto=\language19
+\l@estonian=\language20
+\l@ethiopic=\language21
+\l@finnish=\language22
+\l@french=\language23
+\l@friulan=\language24
+\l@galician=\language25
+\l@georgian=\language26
+\l@german=\language27
+\l@greek=\language28
+\l@gujarati=\language29
+\l@hindi=\language30
+\l@hungarian=\language31
+\l@icelandic=\language32
+\l@indonesian=\language33
+\l@interlingua=\language34
+\l@irish=\language35
+\l@italian=\language36
+\l@kannada=\language37
+\l@kurmanji=\language38
+\l@latin=\language39
+\l@latvian=\language40
+\l@lithuanian=\language41
+\l@liturgicallatin=\language42
+\l@macedonian=\language43
+\l@malayalam=\language44
+\l@marathi=\language45
+\l@mongolian=\language46
+\l@mongolianlmc=\language47
+\l@monogreek=\language48
+\l@ngerman=\language49
+\l@nynorsk=\language50
+\l@occitan=\language51
+\l@oriya=\language52
+\l@pali=\language53
+\l@panjabi=\language54
+\l@piedmontese=\language55
+\l@polish=\language56
+\l@portuguese=\language57
+\l@romanian=\language58
+\l@romansh=\language59
+\l@russian=\language60
+\l@sanskrit=\language61
+\l@serbian=\language62
+\l@serbianc=\language63
+\l@slovak=\language64
+\l@slovenian=\language65
+\l@spanish=\language66
+\l@swedish=\language67
+\l@swissgerman=\language68
+\l@tamil=\language69
+\l@telugu=\language70
+\l@thai=\language71
+\l@turkish=\language72
+\l@turkmen=\language73
+\l@ukenglish=\language74
+\l@ukrainian=\language75
+\l@uppersorbian=\language76
+\l@usenglishmax=\language77
+\l@welsh=\language78
+\babelcatcodetablenum=\catcodetable12
+\bbl@pattcodes=\catcodetable13
+)
+\babel@savecnt=\count323
+\U@D=\dimen284
+\l@unhyphenated=\language79
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/babel
+/luababel.def"
+\bbl@attr@locale=\attribute5
+))
+LaTeX Info: Redefining \textlatin on input line 718.
+
+*************************************
+* Local config file bblopts.cfg used
+*
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/arabi/b
+blopts.cfg"
+File: bblopts.cfg 2005/09/08 v0.1 add Arabic and Farsi to "declared" options of
+ babel
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/babel-p
+ortuges/portuges.ldf"
+Language: portuges 2021/07/09 v1.2t Portuguese support from the babel system
+Package babel Info: Making " an active character on input line 143.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/hyph-
+utf8/loadhyph/loadhyph-pt.tex" UTF-8 Portuguese hyphenation patterns
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/hyph-
+utf8/patterns/tex/hyph-pt.tex"))))
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/in
+putenc.sty"
+Package: inputenc 2021/02/14 v1.3d Input encoding file
+\inpenc@prehook=\toks46
+\inpenc@posthook=\toks47
+
+
+Package inputenc Warning: inputenc package ignored with utf8 based engines.
+
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/abntex2
+/abntex2cite.sty"
+Package: abntex2cite 2018/11/24 v-1.9.7 abnTeX2
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/if
+then.sty"
+Package: ifthen 2020/11/24 v1.1c Standard LaTeX ifthen package (DPC)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/tools/c
+alc.sty"
+Package: calc 2017/05/25 v4.3 Infix arithmetic (KKT,FJ)
+\calc@Acount=\count324
+\calc@Bcount=\count325
+\calc@Adimen=\dimen285
+\calc@Bdimen=\dimen286
+\calc@Askip=\skip64
+\calc@Bskip=\skip65
+LaTeX Info: Redefining \setlength on input line 80.
+LaTeX Info: Redefining \addtolength on input line 81.
+\calc@Ccount=\count326
+\calc@Cskip=\skip66
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/abntex2
+/abntex2abrev.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/setspac
+e/setspace.sty"
+Package: setspace 2011/12/19 v6.7a set line spacing
+)
+\bibindent=\skip67
+\minimumbiblabelwidth=\skip68
+\ABCIauxlen=\skip69
+\c@ABCIaux=\count327
+\c@ABCImax=\count328
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/iftex
+/ifxetex.sty"
+Package: ifxetex 2019/10/25 v0.7 ifxetex legacy package. Use iftex instead.
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/relsize
+/relsize.sty"
+Package: relsize 2013/03/29 ver 4.1
+)
+\biblabelsep=\skip70
+LaTeX Info: Redefining \newblock on input line 591.
+LaTeX Info: Redefining \cite on input line 618.
+\ABCItoken=\toks48
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/float/f
+loat.sty"
+Package: float 2001/11/08 v1.3d Float enhancements (AL)
+\c@float@type=\count329
+\float@exts=\toks49
+\float@box=\box75
+\@float@everytoks=\toks50
+\@floatcapt=\box76
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/pgf/uti
+lities/pgfpages.sty"
+Package: pgfpages 2011/01/05 ver 0.02
+\pgf@logicalpages=\count330
+\pgf@firstshipout=\count331
+\pgf@lastshipout=\count332
+\pgf@currentshipout=\count333
+\pgf@cpn=\count334
+\pgf@shipoutnextto=\count335
+\pgfphysicalheight=\dimen287
+\pgfphysicalwidth=\dimen288
+\pgfpages@shipoutbox=\box77
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/capt-of
+/capt-of.sty"
+Package: capt-of 2009/12/29 v0.2 standard captions outside of floats
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/ulem/ul
+em.sty"
+\UL@box=\box78
+\UL@hyphenbox=\box79
+\UL@skip=\skip71
+\UL@hook=\toks51
+\UL@height=\dimen289
+\UL@pe=\count336
+\UL@pixel=\dimen290
+\ULC@box=\box80
+Package: ulem 2019/11/18
+\ULdepth=\dimen291
+)
+Package hyperref Info: Option `pdfnewwindow' set `true' on input line 41.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/fontspe
+c/fontspec.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/l3packa
+ges/xparse/xparse.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/l3kerne
+l/expl3.sty"
+Package: expl3 2021-06-01 L3 programming layer (loader) 
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/l3backe
+nd/l3backend-luatex.def"
+File: l3backend-luatex.def 2021-05-07 L3 backend support: PDF output (LuaTeX)
+\l__color_backend_stack_int=\count337
+\l__pdf_internal_box=\box81
+))
+Package: xparse 2021-06-01 L3 Experimental document command parser
+)
+Package: fontspec 2020/02/21 v2.7i Font selection for XeLaTeX and LuaLaTeX
+Lua module: fontspec 2020/02/21 2.7i Font selection for XeLaTeX and LuaLaTeX
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/fontspe
+c/fontspec-luatex.sty"
+Package: fontspec-luatex 2020/02/21 v2.7i Font selection for XeLaTeX and LuaLaT
+eX
+\l__fontspec_script_int=\count338
+\l__fontspec_language_int=\count339
+\l__fontspec_strnum_int=\count340
+\l__fontspec_tmp_int=\count341
+\l__fontspec_tmpa_int=\count342
+\l__fontspec_tmpb_int=\count343
+\l__fontspec_tmpc_int=\count344
+\l__fontspec_em_int=\count345
+\l__fontspec_emdef_int=\count346
+\l__fontspec_strong_int=\count347
+\l__fontspec_strongdef_int=\count348
+\l__fontspec_tmpa_dim=\dimen292
+\l__fontspec_tmpb_dim=\dimen293
+\l__fontspec_tmpc_dim=\dimen294
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/fo
+ntenc.sty"
+Package: fontenc 2021/04/29 v2.0v Standard LaTeX package
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/fontspe
+c/fontspec.cfg")))
+luaotfload | cache : Lookup cache loaded from C:/Users/mauricio.pereira/AppData/
+Local/MiKTeX/2.9/luatex-cache/generic/names/luaotfload-lookup-cache.luc.
+
+Package fontspec Info: Could not resolve font "AmpleSoftProMedium/B" (it
+(fontspec)             probably doesn't exist).
+
+
+Package fontspec Info: Could not resolve font "AmpleSoftProBold/I" (it
+(fontspec)             probably doesn't exist).
+
+
+Package fontspec Info: Could not resolve font "AmpleSoftProRegular/BI" (it
+(fontspec)             probably doesn't exist).
+
+luaotfload | aux : font no 32 (nil) does not define feature smcp for script latn
+ with language dflt
+luaotfload | aux : font no 33 (nil) does not define feature smcp for script latn
+ with language dflt
+luaotfload | aux : font no 34 (nil) does not define feature smcp for script latn
+ with language dflt
+
+Package fontspec Info: Font family 'AmpleSoftPro(0)' created for font
+(fontspec)             'AmpleSoft Pro' with options
+(fontspec)             [Ligatures=TeX,UprightFont={* Regular},BoldFont={*
+(fontspec)             Bold},ItalicFont={* Medium}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <->"AmpleSoftProRegular:mode=node;script=latn;language=d
+flt;+tlig;"
+(fontspec)             - 'small caps'  (m/sc) with NFSS spec.: 
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"AmpleSoftProBold:mode=node;script=latn;language=dflt
+;+tlig;"
+(fontspec)             - 'bold small caps'  (b/sc) with NFSS spec.: 
+(fontspec)             - 'italic' (m/it) with NFSS spec.:
+(fontspec)             <->"AmpleSoftProMedium:mode=node;script=latn;language=df
+lt;+tlig;"
+(fontspec)             - 'italic small caps'  (m/scit) with NFSS spec.: 
+
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerthemeBerlin.sty"
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerouterthememiniframes.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamercolorthemewhale.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamercolorthemeorchid.sty")
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/beamer/
+beamerinnerthemerectangles.sty")) (./beamercolorthemeAsset1.sty)
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\\' on input line 73.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\new@ifnextchar' on input line 73.
+
+(./2022_08_comite.aux)
+\openout1 = 2022_08_comite.aux
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 92.
+LaTeX Font Info:    Trying to load font information for TS1+cmr on input line 9
+2.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/base/ts
+1cmr.fd"
+File: ts1cmr.fd 2019/12/16 v2.5j Standard LaTeX font definitions
+)
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 92.
+LaTeX Font Info:    ... okay on input line 92.
+
+*geometry* driver: auto-detecting
+*geometry* detected driver: luatex
+*geometry* verbose mode - [ preamble ] result:
+* driver: luatex
+* paper: custom
+* layout: <same size as paper>
+* layoutoffset:(h,v)=(0.0pt,0.0pt)
+* modes: includehead includefoot 
+* h-part:(L,W,R)=(28.45274pt, 398.3386pt, 28.45274pt)
+* v-part:(T,H,B)=(0.0pt, 256.0748pt, 0.0pt)
+* \paperwidth=455.24408pt
+* \paperheight=256.0748pt
+* \textwidth=398.3386pt
+* \textheight=227.62207pt
+* \oddsidemargin=-43.81725pt
+* \evensidemargin=-43.81725pt
+* \topmargin=-72.26999pt
+* \headheight=14.22636pt
+* \headsep=0.0pt
+* \topskip=11.0pt
+* \footskip=14.22636pt
+* \marginparwidth=4.0pt
+* \marginparsep=10.0pt
+* \columnsep=10.0pt
+* \skip\footins=10.0pt plus 4.0pt minus 2.0pt
+* \hoffset=0.0pt
+* \voffset=0.0pt
+* \mag=1000
+* \@twocolumnfalse
+* \@twosidefalse
+* \@mparswitchfalse
+* \@reversemarginfalse
+* (1in=72.27pt=25.4mm, 1cm=28.453pt)
+
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/context/base/
+mkii/supp-pdf.mkii"
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count349
+\scratchdimen=\dimen295
+\scratchbox=\box82
+\nofMPsegments=\count350
+\nofMParguments=\count351
+\everyMPshowfont=\toks52
+\MPscratchCnt=\count352
+\MPscratchDim=\dimen296
+\MPnumerator=\count353
+\makeMPintoPDFobject=\count354
+\everyMPtoPDFconversion=\toks53
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/epstopd
+f-pkg/epstopdf-base.sty"
+Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
+85.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/00mikte
+x/epstopdf-sys.cfg"
+File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
+))
+Package hyperref Info: Link coloring OFF on input line 92.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/hyperre
+f/nameref.sty"
+Package: nameref 2021-04-02 v2.47 Cross-referencing by name of section
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/refcoun
+t/refcount.sty"
+Package: refcount 2019/12/15 v3.6 Data extraction from label references (HO)
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/generic/getti
+tlestring/gettitlestring.sty"
+Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
+)
+\c@section@level=\count355
+)
+LaTeX Info: Redefining \ref on input line 92.
+LaTeX Info: Redefining \pageref on input line 92.
+LaTeX Info: Redefining \nameref on input line 92.
+ (./2022_08_comite.out) (./2022_08_comite.out)
+\@outlinefile=\write5
+
+\openout5 = 2022_08_comite.out
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  OT1/cmr/m/n --> OT1/cmss/m/n on input line 92.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  OT1/cmr/bx/n --> OT1/cmss/b/n on input line 92.
+\symnumbers=\mathgroup6
+\sympureletters=\mathgroup7
+LaTeX Font Info:    Overwriting math alphabet `\mathrm' in version `normal'
+(Font)                  OT1/cmss/m/n --> TU/AmpleSoftPro(0)/m/n on input line 9
+2.
+LaTeX Font Info:    Redeclaring math alphabet \mathbf on input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
+(Font)                  OT1/cmr/bx/n --> TU/AmpleSoftPro(0)/b/n on input line 9
+2.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `bold'
+(Font)                  OT1/cmr/bx/n --> TU/AmpleSoftPro(0)/b/n on input line 9
+2.
+LaTeX Font Info:    Redeclaring math alphabet \mathsf on input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
+(Font)                  OT1/cmss/m/n --> TU/AmpleSoftPro(0)/m/n on input line 9
+2.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  OT1/cmss/bx/n --> TU/AmpleSoftPro(0)/m/n on input line 
+92.
+LaTeX Font Info:    Redeclaring math alphabet \mathit on input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
+(Font)                  OT1/cmr/m/it --> TU/AmpleSoftPro(0)/m/it on input line 
+92.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
+(Font)                  OT1/cmr/bx/it --> TU/AmpleSoftPro(0)/m/it on input line
+ 92.
+LaTeX Font Info:    Redeclaring math alphabet \mathtt on input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 92.
+LaTeX Font Info:    Overwriting symbol font `numbers' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/m/n --> TU/AmpleSoftPro(0)/b/n on in
+put line 92.
+LaTeX Font Info:    Overwriting symbol font `pureletters' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/m/it --> TU/AmpleSoftPro(0)/b/it on 
+input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathrm' in version `bold'
+(Font)                  OT1/cmss/b/n --> TU/AmpleSoftPro(0)/b/n on input line 9
+2.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/b/n --> TU/AmpleSoftPro(0)/b/n on in
+put line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/m/n --> TU/AmpleSoftPro(0)/b/n on in
+put line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/m/it --> TU/AmpleSoftPro(0)/b/it on 
+input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  TU/lmtt/m/n --> TU/lmtt/b/n on input line 92.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator-basic-dictionary-English.dict"
+Dictionary: translator-basic-dictionary, Language: English 
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator-bibliography-dictionary-English.dict"
+Dictionary: translator-bibliography-dictionary, Language: English 
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator-environment-dictionary-English.dict"
+Dictionary: translator-environment-dictionary, Language: English 
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator-months-dictionary-English.dict"
+Dictionary: translator-months-dictionary, Language: English 
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator-numbers-dictionary-English.dict"
+Dictionary: translator-numbers-dictionary, Language: English 
+)
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/transla
+tor/translator-theorem-dictionary-English.dict"
+Dictionary: translator-theorem-dictionary, Language: English 
+)
+
+Package fontspec Info: Adjusting the maths setup (use [no-math] to avoid
+(fontspec)             this).
+
+\symlegacymaths=\mathgroup8
+LaTeX Font Info:    Overwriting symbol font `legacymaths' in version `bold'
+(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 92.
+LaTeX Font Info:    Redeclaring math accent \acute on input line 92.
+LaTeX Font Info:    Redeclaring math accent \grave on input line 92.
+LaTeX Font Info:    Redeclaring math accent \ddot on input line 92.
+LaTeX Font Info:    Redeclaring math accent \tilde on input line 92.
+LaTeX Font Info:    Redeclaring math accent \bar on input line 92.
+LaTeX Font Info:    Redeclaring math accent \breve on input line 92.
+LaTeX Font Info:    Redeclaring math accent \check on input line 92.
+LaTeX Font Info:    Redeclaring math accent \hat on input line 92.
+LaTeX Font Info:    Redeclaring math accent \dot on input line 92.
+LaTeX Font Info:    Redeclaring math accent \mathring on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Delta on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Theta on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Xi on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Pi on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Phi on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Psi on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \Omega on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 92.
+LaTeX Font Info:    Redeclaring symbol font `operators' on input line 92.
+LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
+(Font)              `operators' in the math version `normal' on input line 92.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  OT1/cmss/m/n --> TU/AmpleSoftPro(0)/m/n on input line 9
+2.
+LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
+(Font)              `operators' in the math version `bold' on input line 92.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  OT1/cmss/b/n --> TU/AmpleSoftPro(0)/m/n on input line 9
+2.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  TU/AmpleSoftPro(0)/m/n --> TU/AmpleSoftPro(0)/m/n on in
+put line 92.
+LaTeX Font Info:    Redeclaring math alphabet \mathrm on input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
+(Font)                  TU/AmpleSoftPro(0)/m/it --> TU/AmpleSoftPro(0)/m/it on 
+input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
+(Font)                  TU/AmpleSoftPro(0)/b/n --> TU/AmpleSoftPro(0)/b/n on in
+put line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
+(Font)                  TU/AmpleSoftPro(0)/m/n --> TU/AmpleSoftPro(0)/m/n on in
+put line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
+(Font)                  TU/lmtt/m/n --> TU/lmtt/m/n on input line 92.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/m/n --> TU/AmpleSoftPro(0)/b/n on in
+put line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/b/it --> TU/AmpleSoftPro(0)/b/it on 
+input line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  TU/AmpleSoftPro(0)/b/n --> TU/AmpleSoftPro(0)/b/n on in
+put line 92.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  TU/lmtt/b/n --> TU/lmtt/b/n on input line 92.
+ (./2022_08_comite.nav)
+Overfull \hbox (1.60101pt too wide) in paragraph at lines 92--92
+[][]  
+ []
+
+<../template/figuras/logoAsset1.pdf, id=66, 995.8505pt x 497.92023pt>
+File: ../template/figuras/logoAsset1.pdf Graphic file (type pdf)
+<use ../template/figuras/logoAsset1.pdf>
+Package luatex.def Info: ../template/figuras/logoAsset1.pdf  used on input line
+ 100.
+(luatex.def)             Requested size: 139.42093pt x 69.70834pt.
+
+Overfull \vbox (5.42418pt too high) detected at line 100
+ []
+
+
+warning  (file ../template/figuras/background.pdf) (pdf inclusion): PDF inclusio
+n: found PDF version '1.7', but at most version '1.5' allowed
+<../template/figuras/background.pdf, id=67, 845.07724pt x 597.55246pt>
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 100.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[1{C:/Users/mauricio.pereira/AppData/Local/MiKTeX/2.9/pdftex/config/pdftex.map}
+
+<../template/figuras/background.pdf><../template/figuras/logoAsset1.pdf>]
+(./2022_08_comite.toc)
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 107.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[2
+
+<../template/figuras/logoAsset1.pdf>]
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 110.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[3
+
+]
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 131.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[4
+
+]
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 134.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[5
+
+]
+<figuras/202208_pnl.pdf, id=283, 1111.37396pt x 491.58342pt>
+File: figuras/202208_pnl.pdf Graphic file (type pdf)
+<use figuras/202208_pnl.pdf>
+Package luatex.def Info: figuras/202208_pnl.pdf  used on input line 138.
+(luatex.def)             Requested size: 394.35739pt x 174.43457pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 138.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[6
+
+<./figuras/202208_pnl.pdf>]
+<figuras/202208_A1 Master FIM_pnl_product.pdf, id=406, 834.46443pt x 369.39882p
+t>
+File: figuras/202208_A1 Master FIM_pnl_product.pdf Graphic file (type pdf)
+<use figuras/202208_A1 Master FIM_pnl_product.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_pnl_product.pdf  used on 
+input line 143.
+(luatex.def)             Requested size: 394.35739pt x 174.57568pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 143.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[7
+
+<./figuras/202208_A1 Master FIM_pnl_product.pdf>]
+<figuras/202208_A1 Master FIM_pnl_trade_position.pdf, id=510, 833.16582pt x 308
+.86893pt>
+File: figuras/202208_A1 Master FIM_pnl_trade_position.pdf Graphic file (type pd
+f)
+<use figuras/202208_A1 Master FIM_pnl_trade_position.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_pnl_trade_position.pdf  u
+sed on input line 148.
+(luatex.def)             Requested size: 394.35739pt x 146.19583pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 148.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[8
+
+<./figuras/202208_A1 Master FIM_pnl_trade_position.pdf>]
+<figuras/202208_A1 Master FIM_monthBymonth_performance.pdf, id=596, 706.79997pt
+ x 208.7204pt>
+File: figuras/202208_A1 Master FIM_monthBymonth_performance.pdf Graphic file (t
+ype pdf)
+<use figuras/202208_A1 Master FIM_monthBymonth_performance.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_monthBymonth_performance.
+pdf  used on input line 157.
+(luatex.def)             Requested size: 394.35739pt x 116.45586pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 157.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[9
+
+<./figuras/202208_A1 Master FIM_monthBymonth_performance.pdf>]
+<figuras/202208_A1 Master FIM_drawdown.pdf, id=691, 807.52pt x 478.97589pt>
+File: figuras/202208_A1 Master FIM_drawdown.pdf Graphic file (type pdf)
+<use figuras/202208_A1 Master FIM_drawdown.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_drawdown.pdf  used on inp
+ut line 162.
+(luatex.def)             Requested size: 298.75394pt x 177.20367pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 162.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[10
+
+<./figuras/202208_A1 Master FIM_drawdown.pdf>]
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 165.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[11
+
+]
+<figuras/202208_correl.pdf, id=845, 509.68542pt x 281.31223pt>
+File: figuras/202208_correl.pdf Graphic file (type pdf)
+<use figuras/202208_correl.pdf>
+Package luatex.def Info: figuras/202208_correl.pdf  used on input line 169.
+(luatex.def)             Requested size: 338.59023pt x 186.8857pt.
+
+Overfull \vbox (8.10811pt too high) detected at line 169
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 169.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[12
+
+<./figuras/202208_correl.pdf>]
+<figuras/202208_A1 Master FIM_backtest_1.pdf, id=925, 717.44356pt x 498.663pt>
+File: figuras/202208_A1 Master FIM_backtest_1.pdf Graphic file (type pdf)
+<use figuras/202208_A1 Master FIM_backtest_1.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_backtest_1.pdf  used on i
+nput line 202.
+(luatex.def)             Requested size: 239.00558pt x 166.11913pt.
+
+Overfull \vbox (35.70142pt too high) detected at line 202
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 202.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[13
+
+<./figuras/202208_A1 Master FIM_backtest_1.pdf>]
+<figuras/202208_A1 Master FIM_backtest_2022-08-10.pdf, id=1031, 717.44356pt x 4
+98.663pt>
+File: figuras/202208_A1 Master FIM_backtest_2022-08-10.pdf Graphic file (type p
+df)
+<use figuras/202208_A1 Master FIM_backtest_2022-08-10.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_backtest_2022-08-10.pdf  
+used on input line 202.
+(luatex.def)             Requested size: 239.00558pt x 166.11913pt.
+
+Overfull \vbox (35.70142pt too high) detected at line 202
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 202.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[14
+
+<./figuras/202208_A1 Master FIM_backtest_2022-08-10.pdf>]
+<figuras/202208_A1 Master FIM_backtest_2.pdf, id=1176, 717.44356pt x 498.663pt>
+
+File: figuras/202208_A1 Master FIM_backtest_2.pdf Graphic file (type pdf)
+<use figuras/202208_A1 Master FIM_backtest_2.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_backtest_2.pdf  used on i
+nput line 202.
+(luatex.def)             Requested size: 239.00558pt x 166.11913pt.
+
+Overfull \vbox (35.70142pt too high) detected at line 202
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 202.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[15
+
+<./figuras/202208_A1 Master FIM_backtest_2.pdf>]
+<figuras/202208_A1 Master FIM_backtest_3.pdf, id=1289, 717.44356pt x 498.663pt>
+
+File: figuras/202208_A1 Master FIM_backtest_3.pdf Graphic file (type pdf)
+<use figuras/202208_A1 Master FIM_backtest_3.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_backtest_3.pdf  used on i
+nput line 202.
+(luatex.def)             Requested size: 239.00558pt x 166.11913pt.
+
+Overfull \vbox (35.70142pt too high) detected at line 202
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 202.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[16
+
+<./figuras/202208_A1 Master FIM_backtest_3.pdf>]
+<figuras/202208_hist_var.pdf, id=1401, 719.53154pt x 306.41351pt>
+File: figuras/202208_hist_var.pdf Graphic file (type pdf)
+<use figuras/202208_hist_var.pdf>
+Package luatex.def Info: figuras/202208_hist_var.pdf  used on input line 207.
+(luatex.def)             Requested size: 394.35739pt x 167.9435pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 207.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[17
+
+<./figuras/202208_hist_var.pdf>]
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 210.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[18
+
+]
+<figuras/202208_trader_var_stress.pdf, id=1540, 959.18362pt x 437.23036pt>
+File: figuras/202208_trader_var_stress.pdf Graphic file (type pdf)
+<use figuras/202208_trader_var_stress.pdf>
+Package luatex.def Info: figuras/202208_trader_var_stress.pdf  used on input li
+ne 214.
+(luatex.def)             Requested size: 394.35739pt x 179.76598pt.
+
+Overfull \vbox (0.98839pt too high) detected at line 214
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 214.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[19
+
+<./figuras/202208_trader_var_stress.pdf>]
+<figuras/202208_A1 Master FIM_rolagem.pdf, id=1617, 707.57344pt x 400.54079pt>
+File: figuras/202208_A1 Master FIM_rolagem.pdf Graphic file (type pdf)
+<use figuras/202208_A1 Master FIM_rolagem.pdf>
+Package luatex.def Info: figuras/202208_A1 Master FIM_rolagem.pdf  used on inpu
+t line 219.
+(luatex.def)             Requested size: 306.72241pt x 173.62877pt.
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 219.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[20
+
+<./figuras/202208_A1 Master FIM_rolagem.pdf>]
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 222.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[21
+
+]
+LaTeX Font Info:    Trying to load font information for U+msa on input line 232
+.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsfont
+s/umsa.fd"
+File: umsa.fd 2013/01/14 v3.01 AMS symbols A
+)
+LaTeX Font Info:    Trying to load font information for U+msb on input line 232
+.
+
+("C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 2.9/tex/latex/amsfont
+s/umsb.fd"
+File: umsb.fd 2013/01/14 v3.01 AMS symbols B
+)
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 232.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[22
+
+]
+<figuras/202208_diversification.pdf, id=1817, 435.06445pt x 402.36539pt>
+File: figuras/202208_diversification.pdf Graphic file (type pdf)
+<use figuras/202208_diversification.pdf>
+Package luatex.def Info: figuras/202208_diversification.pdf  used on input line
+ 249.
+(luatex.def)             Requested size: 179.25114pt x 165.77516pt.
+<figuras/202208_diversification_PM.pdf, id=1818, 435.06445pt x 402.36539pt>
+File: figuras/202208_diversification_PM.pdf Graphic file (type pdf)
+<use figuras/202208_diversification_PM.pdf>
+Package luatex.def Info: figuras/202208_diversification_PM.pdf  used on input l
+ine 249.
+(luatex.def)             Requested size: 179.25114pt x 165.77516pt.
+
+Overfull \vbox (35.70142pt too high) detected at line 249
+ []
+
+File: ../template/figuras/background.pdf Graphic file (type pdf)
+<use ../template/figuras/background.pdf>
+Package luatex.def Info: ../template/figuras/background.pdf  used on input line
+ 249.
+(luatex.def)             Requested size: 362.15112pt x 256.07634pt.
+
+Overfull \hbox (1.60101pt too wide) has occurred while \output is active
+[][] 
+ []
+
+[23
+
+<./figuras/202208_diversification.pdf><./figuras/202208_diversification_PM.pdf>]
+\tf@nav=\write6
+
+\openout6 = 2022_08_comite.nav
+\tf@toc=\write7
+
+\openout7 = 2022_08_comite.toc
+\tf@snm=\write8
+
+\openout8 = 2022_08_comite.snm
+ (./2022_08_comite.aux)
+Package rerunfilecheck Info: File `2022_08_comite.out' has not changed.
+(rerunfilecheck)             Checksum: A2619DF3C583A800F7F2B9D46A32FDF0;903.
+)
+
+Here is how much of LuaTeX's memory you used:
+ 26557 strings out of 478081
+ 100000,1144653 words of node,token memory allocated
+ 12950 words of node memory still in use:
+   249 hlist, 19 vlist, 20 rule, 18 disc, 12 local_par, 274 glue, 51 kern, 23 pe
+nalty, 116 glyph, 1544 attribute, 66 glue_spec, 774 attribute_list, 5 write, 368
+ pdf_literal, 25 pdf_start_link, 25 pdf_end_link, 25 pdf_action, 110 pdf_colorst
+ack, 2 pdf_setmatrix, 2 pdf_save, 2 pdf_restore nodes
+   avail lists: 2:2073,3:905,4:532,5:275,6:82,7:2929,8:99,9:762,10:14,11:250
+ 45280 multiletter control sequences out of 65536+600000
+ 63 fonts using 5697703 bytes
+ 128i,19n,117p,445b,918s stack positions out of 5000i,500n,10000p,200000b,80000s
+<C:/Users/mauricio.pereira/AppData/Local/Microsoft/Windows/Fonts/amplesoftpro-bo
+ld.ttf><C:/Users/mauricio.pereira/AppData/Local/Microsoft/Windows/Fonts/fontsfre
+e-net-amplesoftpro.ttf><C:/Users/mauricio.pereira/AppData/Local/Programs/MiKTeX 
+2.9/fonts/type1/public/amsfonts/symbols/msam10.pfb>
+Output written on 2022_08_comite.pdf (23 pages, 741823 bytes).
+
+PDF statistics: 2004 PDF objects out of 2073 (max. 8388607)
+ 53 named destinations out of 1000 (max. 131072)
+ 344 words of extra memory for PDF output out of 10000 (max. 100000000)
+

@@ -1,0 +1,133 @@
+%----------------------------------------------%
+% Template Beamer para Apresentações da Asset1 %
+% by alcemygvseverino@gmail.com                %
+% Baseado em MIT Beamer Template			   %
+% versao 1.1								   %
+% Atualizado em 14/12/2021					   %
+%----------------------------------------------%
+\documentclass[handout,t,aspectratio=169]{beamer}
+% Para alterar a linguagem do documento
+\usepackage[portuges]{babel}
+% Para aceitar caracteres especias deretamente do teclado
+\usepackage[utf8]{inputenc}
+% Para seguir as normas da ABNT de citacao e referencias
+\usepackage[alf]{abntex2cite}
+% Para incluir figuras
+\usepackage{graphicx}
+% Para melhor ajuste da posisao das figuras
+\usepackage{float}
+% Para ajustar as dimensoes do layout da pagina
+\usepackage{geometry}
+% Para formatar estrutura e informacoes de formulas matematicas
+\usepackage{amsmath}
+% Para incluir simbolos especiais em formulas matematicas
+\usepackage{amssymb}
+% Para incluir links nas referencias
+\usepackage{url}
+% Para incluir paginas de documentos .pdf externos
+\usepackage{pgfpages}
+% Para ajustar o estilo dos contadores
+\usepackage{enumerate}
+% Para modificar a cor do texto
+\usepackage{color}
+% Para incluir condicoes
+\usepackage{ifthen}
+% Para colocar legendas em algo que nao e float
+\usepackage{capt-of}
+
+\usepackage{fontspec}
+\setmainfont[Mapping=tex-text]{AmpleSoft Pro Regular}
+\let\sfdefault\rmdefault
+
+% Para definir o tema do slide
+\usetheme{Berlin}
+% Para difinir cores e background
+\usecolortheme{Asset1}
+% Para numerar as figuras
+\setbeamertemplate{caption}[numbered]
+
+% Título
+\title[Comitê de Risco]{
+	Comitê de Risco e Liquidez}
+% Data
+\date{
+	dd-mmm-yyyy}
+% Autores
+\author[\url{risco@asset1.com.br}]{
+	Maurício Pereira \inst{1}\\
+	\vspace{0.25cm}
+	Luís Oliveira \inst{2}}
+% Instituto
+\institute[Risco]{
+	\inst{1}%
+	\url{mauricio.pereira@asset1.com.br}\\
+	\vspace{0.25cm}
+	\inst{2}%
+	\url{luis.oliveira@asset1.com.br}\\
+}
+% Logo do canto inferior direito
+\pgfdeclareimage[height=0.9cm]{logo_Asset1}{figuras/logo_Asset1}
+\logo{
+	\vspace*{-0.25cm}
+	\pgfuseimage{logo_Asset1}
+	\hspace*{-0.05cm}}
+
+
+\begin{document}
+% Agenda
+\frame{\titlepage}
+\section[]{}
+\begin{frame}{Agenda}
+	\tableofcontents
+\end{frame}
+
+\section[Pendências]{Pontos Pendentes}
+\begin{frame}{Pontos Pendentes}
+	\begin{enumerate}
+		\item A
+		\item B  
+	\end{enumerate}
+\end{frame}
+
+\section[Carteira]{Revisão da Carteira}
+\begin{frame}{Atribuição de Resultado}
+	{\color{red} Adicionar Figura}  
+\end{frame}
+
+\begin{frame}{Atribuição de Resultado por \emph{PRODUTO}}
+	{\color{red} Adicionar Figura}  
+\end{frame}
+
+\begin{frame}{Correlação entre estratégias}
+	{\color{red} Adicionar Figura}  
+\end{frame}
+
+\begin{frame}{Performance e Drawdown}
+	{\color{red} Adicionar Figura}  
+\end{frame}
+
+\begin{frame}{V@R Backtest}
+	{\color{red} Adicionar Figura}  
+\end{frame}
+
+\begin{frame}{Composição de Risco}
+	{\color{red} Adicionar Figura}  
+\end{frame}
+
+\section[Limites]{Acompanhamento de Limites}
+\begin{frame}{Violações de Limites e Alertas}
+	CCC  
+\end{frame}
+
+\section[Risco]{Controles de Risco e Relatórios}
+\begin{frame}{Rolagem do mês anterior}
+	CCC  
+\end{frame}
+
+\section[Outros]{Outros pontos a discutir}
+\begin{frame}{BBB}
+	CCC  
+\end{frame}
+
+
+\end{document}

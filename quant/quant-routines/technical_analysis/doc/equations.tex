@@ -1,0 +1,101 @@
+\documentclass[11pt, letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\newcommand\numberthis{\addtocounter{equation}{1}\tag{\theequation}}
+\title{Equações do indicador de otimismo/pessimismo}
+\author{Carlos Viana, Marlon Koga}
+\date{2020-11-16}
+
+\begin{document}
+
+	\begin{titlepage}
+	\maketitle
+	\end{titlepage}
+	
+	\begin{equation}
+		\begin{bmatrix}
+			1 & PRE & IBOV & SPX & USD
+		\end{bmatrix}
+		\begin{bmatrix}
+			x_0 \\
+			x_{PRE} \\
+			x_{IBOV} \\
+			x_{SPX} \\
+			x_{USD}
+		\end{bmatrix} = b + \epsilon
+	\end{equation}
+
+	Onde:	\newline
+		$b$ - Retorno do fundo [$n \times 1$] \newline 
+		$\epsilon$ - Erro da regressão [$n \times 1$]
+
+	\begin{equation}
+		\begin{bmatrix}
+			1 & PRE & [A]
+		\end{bmatrix}
+		\begin{bmatrix}
+			x_0 \\
+			x_{PRE} \\
+			\{x\}
+		\end{bmatrix} = b + \epsilon
+	\end{equation}
+
+	Tal que:	\newline
+		$A$ - Matriz que agrupa os retornos do IBOV, SPX e USD [$3 \times 1$] \newline 
+
+	\begin{equation}
+		\begin{bmatrix}
+			1 & PRE & [A]
+		\end{bmatrix}
+		\begin{bmatrix}
+			x_0 \\
+			x_{PRE} \\
+			(x-\bar{x})
+		\end{bmatrix} = b - A \bar{x}+ \epsilon
+	\end{equation}
+
+	\begin{equation}
+		\begin{bmatrix}
+			1 & PRE & A.diag(\sigma)
+		\end{bmatrix}
+		\begin{bmatrix}
+			x_0 \\
+			x_{PRE} \\
+			\left(\frac{x-\bar{x}}{\sigma}\right)
+		\end{bmatrix} = b - A \bar{x}+ \epsilon \equiv  b^* + \epsilon
+	\end{equation}
+
+	\begin{equation}
+		\begin{bmatrix}
+			1 & PRE & A.diag(\sigma) w
+		\end{bmatrix}
+		\begin{bmatrix}
+			x_0 \\
+			x_{PRE} \\
+			\beta
+		\end{bmatrix} =  b - A \bar{x}+ \epsilon
+	\end{equation}
+
+
+	\begin{equation}
+		A^* x^* = b^* + \epsilon
+	\end{equation}
+
+	\begin{equation}
+		\begin{bmatrix}
+			1 & PRE & IBOV & SPX & USD
+		\end{bmatrix}
+		\begin{bmatrix}
+			x_0 \\
+			x_{PRE} \\
+			diag(\sigma) w \beta + \bar{x}
+		\end{bmatrix} = b + \epsilon
+	\end{equation}
+
+	\pagebreak
+	\begin{equation}
+		w = [ -\alpha_{ibov}^2  -\alpga]
+	\end{equation}
+
+\end{document}

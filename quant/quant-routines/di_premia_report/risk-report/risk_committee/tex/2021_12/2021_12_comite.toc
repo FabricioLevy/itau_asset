@@ -1,0 +1,7 @@
+\babel@toc {portuges}{}
+\beamer@sectionintoc {2}{Pontos Pendentes}{3}{0}{1}
+\beamer@sectionintoc {3}{Atribuição de Resultado}{4}{0}{2}
+\beamer@sectionintoc {4}{Revisão da Carteira}{8}{0}{3}
+\beamer@sectionintoc {5}{Acompanhamento de Limites}{11}{0}{4}
+\beamer@sectionintoc {6}{Controles de Risco e Relatórios}{13}{0}{5}
+\beamer@sectionintoc {7}{Outros pontos a discutir}{15}{0}{6}

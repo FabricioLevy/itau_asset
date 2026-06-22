@@ -1,0 +1,136 @@
+============================================================ 
+  DI PREMIA REPORT 
+  21/06/2026  11:28:20.26 
+============================================================ 
+ 
+[BANCO] Atualizando dados... 
+ 
+ 
+  [11:28:20.33]  SELIC TARGET 
+Traceback (most recent call last):
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_selic.py", line 47, in <module>
+    df = fetch_selic()
+         ^^^^^^^^^^^^^
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_selic.py", line 18, in fetch_selic
+    df = sgs.get({'rate': SERIE}, start=DATE_START)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\bcb\sgs\__init__.py", line 399, in get
+    text = get_json(code.value, start, end, last, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\bcb\sgs\__init__.py", line 466, in get_json
+    _raise_sgs_response_error(res, code_obj.value)
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\bcb\sgs\__init__.py", line 221, in _raise_sgs_response_error
+    raise SGSError(f"BCB error: {res_json['error']}")
+bcb.exceptions.SGSError: BCB error: O sistema aceita uma janela de consulta de, no máximo, 10 anos em séries de periodicidade diária
+  [ERRO] SELIC TARGET 
+ 
+  [11:28:24.71]  CDI 
+Traceback (most recent call last):
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_cdi.py", line 74, in <module>
+    df = fetch_cdi()
+         ^^^^^^^^^^^
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_cdi.py", line 19, in fetch_cdi
+    df = sgs.get({'value': SERIE}, start=DATE_START)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\bcb\sgs\__init__.py", line 399, in get
+    text = get_json(code.value, start, end, last, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\bcb\sgs\__init__.py", line 466, in get_json
+    _raise_sgs_response_error(res, code_obj.value)
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\bcb\sgs\__init__.py", line 221, in _raise_sgs_response_error
+    raise SGSError(f"BCB error: {res_json['error']}")
+bcb.exceptions.SGSError: BCB error: O sistema aceita uma janela de consulta de, no máximo, 10 anos em séries de periodicidade diária
+  [ERRO] CDI 
+ 
+  [11:28:28.12]  Focus BCB 
+Traceback (most recent call last):
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_focus.py", line 132, in <module>
+    df = fetch_focus(indicador)
+         ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_focus.py", line 56, in fetch_focus
+    resp = _bcb_get(BASE_URL, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\scripts\update_focus.py", line 31, in _bcb_get
+    resp.raise_for_status()
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\requests\models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/ExpectativasMercadoSuavizadas?%24filter=Indicador+eq+%27IPCA%27+and+Suavizado+eq+%27S%27+and+%28SuavizadoTipoPrazo+eq+%27126DU%27+or+SuavizadoTipoPrazo+eq+%27252DU%27+or+SuavizadoTipoPrazo+eq+%27378DU%27+or+SuavizadoTipoPrazo+eq+%27504DU%27+or+SuavizadoTipoPrazo+eq+%271260DU%27%29&%24select=Indicador%2CSuavizadoTipoPrazo%2CData%2CMedia&%24format=json&%24top=10000&%24skip=0
+  [ERRO] Focus BCB 
+ 
+  [11:28:31.15]  COPOM 
+ 
+  [11:28:39.25]  Inflation Target 
+ 
+  [11:28:52.03]  Curvas DI/DAP BEI 
+[PIPELINE] Rodando stages... 
+ 
+ 
+  [11:28:55.63]  Stage 0_update_data 
+ 
+  [11:29:05.16]  Stage 1_process_target_cpi 
+ 
+  [11:29:28.84]  Stage 2_process_focus 
+ 
+  [11:29:34.17]  Stage 4_export_hike_corte 
+ 
+  [11:29:39.24]  Stage 5_export_premia 
+Traceback (most recent call last):
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\pandas\core\indexes\range.py", line 1018, in __getitem__
+    return self._range[new_key]
+           ~~~~~~~~~~~^^^^^^^^^
+IndexError: range object index out of range
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\5_export_premia\__main__.py", line 133, in <module>
+    main()
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\5_export_premia\__main__.py", line 119, in main
+    add_copom_flag(premia, copom_df)
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\5_export_premia\__main__.py", line 103, in add_copom_flag
+    while df.index[0] > current_copom:
+          ~~~~~~~~^^^
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\pandas\core\indexes\range.py", line 1020, in __getitem__
+    raise IndexError(
+IndexError: index 0 is out of bounds for axis 0 with size 0
+  [ERRO] Stage 5_export_premia 
+ 
+  [11:29:40.25]  Stage 6_plot 
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\6_plot\__main__.py", line 360, in <module>
+    main()
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\6_plot\__main__.py", line 166, in main
+    time_plot.plot(premia, stats, copom, plot_dict, column)
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\6_plot\time_plot.py", line 104, in plot
+    draw_copom_highlight()
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\6_plot\time_plot.py", line 28, in draw_copom_highlight
+    ax.axvspan(copom.index[date_index], df.index.iloc[-1], facecolor=color)
+                                        ^^^^^^^^^^^^^
+AttributeError: 'DatetimeIndex' object has no attribute 'iloc'
+  [ERRO] Stage 6_plot 
+ 
+  [11:29:42.98]  Stage 6a_new_plot 
+ 
+  [11:29:44.51]  Stage 8_export_pdf 
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\fbarl\Desktop\ITAU\itau_asset\quant\quant-routines\di_premia_report\src\8_export_pdf\__main__.py", line 398, in <module>
+    doc.generate_pdf( "%s/di_premia_report" % output_path, clean_tex=False, compiler = 'pdfLaTeX' )
+  File "C:\Users\fbarl\anaconda3\Lib\site-packages\pylatex\document.py", line 325, in generate_pdf
+    raise (
+pylatex.errors.CompilerError: No LaTex compiler was found
+Either specify a LaTex compiler or make sure you have latexmk or pdfLaTex installed.
+  [ERRO] Stage 8_export_pdf 
+ 
+  [11:29:45.94]  Stage 9_export_to_sql 
+ 
+============================================================ 
+  CONCLUIDO COM 6 ERRO(S)  â€”  21/06/2026  11:29:48.71 
+ 
+  Falhas: , SELIC TARGET, CDI, Focus BCB, Stage 5_export_premia, Stage 6_plot, Stage 8_export_pdf 
+============================================================ 

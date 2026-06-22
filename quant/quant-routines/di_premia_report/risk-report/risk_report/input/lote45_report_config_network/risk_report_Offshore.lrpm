@@ -1,0 +1,6 @@
+Folder=R:\Risk\01_DailyReports\01_01_Lote45_extract\Offshore
+TradingDesks=2289
+Reports=1 Day Full Hist VaR
+BookReports=Books Overview Report;Books Products Buckets Risk Report
+BookLevel=10
+MainReport=Main

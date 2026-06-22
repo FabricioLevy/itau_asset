@@ -1,0 +1,116 @@
+\documentclass[12pt]{article}
+\usepackage[a4paper]{geometry}
+\usepackage[poster]{tcolorbox}
+\usepackage{hyperref}
+\usepackage{nameref}
+\pagestyle{empty}
+
+\usepackage{color}
+%R G B
+\DefineNamedColor{named}{blue1}{RGB}{40,130,155}
+\DefineNamedColor{named}{gray1}{RGB}{50,62,72}
+\DefineNamedColor{named}{gray2}{RGB}{201,203,203}
+\DefineNamedColor{named}{gray3}{RGB}{116,141,158}
+\DefineNamedColor{named}{blue2}{RGB}{46,154,178}
+
+\usepackage{fontspec}
+\setmainfont[UprightFont={* Regular},BoldFont={* Bold},ItalicFont={* Medium}]{AmpleSoft Pro}
+
+\def\dt{20221005}
+
+\def\traders{{Fund/Fundo},
+			 {MS/Marcello Siniscalchi},
+	         {BC/Bruno Carvalho},
+           	 {PC/Pedro Carneiro},
+	         {GB/Gabriel Blum},
+             {NF/Norberto Alves},
+	         {MK/Marlon Koga}}
+                
+
+\begin{document}
+
+\foreach \trader\tradername in \traders{
+	
+\phantomsection
+\addcontentsline{toc}{section}{\tradername}	\label{sec:\trader}
+
+
+	\begin{tcbposter}[coverage = {spread}, poster = { columns=3, rows=6, spacing=1mm}, 
+	boxes = {
+		enhanced standard jigsaw,sharp corners=northwest,arc=1mm,boxrule=0.5mm,
+		colback=white,opacityback=0.75,colframe=blue1,
+		title style={color=blue1},
+		fonttitle=\bfseries\scshape
+	}]
+	
+	
+	\posterbox{name=title,column=1,span=3,below=top}{ 
+		\centering \large
+		--
+		\foreach \t\tn in \traders{
+	\hyperref[sec:\t]{\t} -- 
+%	\nameref{sec:\t} --   
+%		{\t} --  
+	}
+	} 
+	
+	\posterbox[]{name=tradername,column=1, below=title}{\Large \tradername}
+	
+	\posterbox[adjusted title=Performance and Drawdown, top=0mm, left=0mm, right=0mm, bottom=0mm]
+	{name=performance,column=1, row=3, span=1.8, rowspan=2}
+	{ 
+		\centering
+		\includegraphics[width=0.99\linewidth]{../output/temp_figs/\dt_\trader_perf_dd.pdf}   
+	}
+    
+    \posterbox[adjusted title=Risk Share (\%),  top=0mm, left=0mm, right=0mm, bottom=0mm]
+    		{name=riskshare,column=1, between=tradername and performance}
+    {
+    \centering
+	\includegraphics[width=0.95\linewidth]{../output/temp_figs/\dt_\trader_piechart.pdf}     
+	}
+	
+	\posterbox[adjusted title=Histogram of Monthly Returns, top=0mm, left=0mm, right=0mm, bottom=0mm]
+	{name=histogram,column*=3, row=3, span=1.2, rowspan=2}
+	{
+	\centering
+	\includegraphics[width=0.99\linewidth]{../output/temp_figs/\dt_\trader_perf_histogram.pdf}     
+	}
+	
+	\posterbox[adjusted title=Historical VaR and Vol, top=0mm, left=0mm, right=0mm, bottom=0mm]
+	{name=varvolhist,column=2, span=2,between=title and histogram}{
+ \centering
+\includegraphics[width=0.99\linewidth]{../output/temp_figs/\dt_\trader_hist_var_vol.pdf}   	
+}
+	
+	\posterbox[adjusted title=Monthly Performance, top=0mm, left=0mm, right=0mm, bottom=0mm]
+	{name=monthperf,column=1, row=5, span=3,between=performance and bottom}
+	{
+		 \centering
+		\includegraphics[width=0.99\linewidth]{../output/temp_figs/\dt_\trader_month_ret.pdf} 
+	}
+\end{tcbposter}
+
+\begin{tcbposter}[coverage = {spread}, poster = { columns=1, rows=1, spacing=1mm}, 
+	boxes = {
+		enhanced standard jigsaw,sharp corners=northwest,arc=1mm,boxrule=0.5mm,
+		colback=white,opacityback=0.75,colframe=blue1,
+		title style={color=blue1},
+		fonttitle=\bfseries\scshape
+	}]
+	
+	
+
+	\posterbox[adjusted title=Performance By Product, top=0mm, left=0mm, right=0mm, bottom=0mm]
+	{name=performance,column=1, row=1, span=1}
+	{ 
+		\centering
+		\includegraphics[scale=0.73]{../output/temp_figs/\trader_performance_cdi.pdf}   
+	}
+
+\end{tcbposter} 
+
+}
+
+
+\end{document}

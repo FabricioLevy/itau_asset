@@ -1,0 +1,5 @@
+\babel@toc {portuges}{}
+\beamer@sectionintoc {2}{Controles de Liquidez}{3}{0}{1}
+\beamer@sectionintoc {3}{Quebra de Risco da Carteira}{8}{0}{2}
+\beamer@sectionintoc {4}{Trade Ideas}{21}{0}{3}
+\beamer@sectionintoc {5}{Performance dos Gestores}{25}{0}{4}

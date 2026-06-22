@@ -1,0 +1,141 @@
+% !TeX spellcheck = pt_BR
+\documentclass[12pt, t]{beamer}
+% Para alterar a linguagem do documento
+\usepackage[portuges]{babel}
+% Para aceitar caracteres especias deretamente do teclado
+\usepackage[utf8]{inputenc}
+% Para incluir figuras
+\usepackage{graphicx}
+% Para melhor ajuste da posisao das figuras
+\usepackage{float}
+% Para ajustar as dimensoes do layout da pagina
+\usepackage{geometry}
+% Para formatar estrutura e informacoes de formulas matematicas
+\usepackage{amsmath}
+% Para incluir simbolos especiais em formulas matematicas
+\usepackage{amssymb}
+% Para incluir links nas referencias
+\usepackage{url}
+% Para incluir paginas de documentos .pdf externos
+\usepackage{pgfpages}
+% Para ajustar o estilo dos contadores
+\usepackage{enumerate}
+% Para modificar a cor do texto
+\usepackage{color}
+% Para incluir condicoes
+\usepackage{ifthen}
+% Para colocar legendas em algo que nao e float
+\usepackage{capt-of}
+
+\usepackage{bookmark}
+\usepackage[poster]{tcolorbox}
+\usepackage[orientation=portrait,size=a4,scale=2.2,debug]{beamerposter}
+\usepackage{hyperref}
+\usepackage{fontspec}
+\setmainfont[UprightFont={* Regular},BoldFont={* Bold},ItalicFont={* Medium}]{AmpleSoft Pro}
+
+\let\sfdefault\rmdefault
+
+% Para definir o tema do slide
+\usetheme{Berlin}
+\setbeamerfont*{section in head/foot}{size=\large}
+\setbeamerfont*{subsection in head/foot}{size=\normalsize}
+\setbeamerfont*{author in head/foot}{size=\normalsize}
+\setbeamerfont*{title in head/foot}{size=\normalsize}
+\setbeamerfont*{date in head/foot}{size=\normalsize}
+
+% Para definir cores e background
+\usecolortheme{Asset1}
+% Para numerar as figuras
+\setbeamertemplate{caption}[numbered]
+
+\def\dt{\VAR{strDate}}
+\def\fund{\VAR{strFund}}
+
+\date{\VAR{strLongDate}}
+
+\def\folder{figuras}
+
+\def\traders{
+	\VAR{strTraders}}
+
+% Título
+\title[Trader Risk Report]{Asset1 Trader Risk Report}
+
+\titlegraphic{
+	\includegraphics[width=0.35\textwidth]{logo_Asset1}
+}
+
+% Autores
+\author[\href{mailto:risco@asset1.com.br}{risco@asset1.com.br}]{
+	\href{mailto:riscoa@asset1.com.br}{Team Risk}
+	\vspace{0.10cm}
+}
+
+\begin{document}	
+	
+	\foreach \trader\tradername in \traders{
+	
+	\section[\trader]{\tradername}
+	
+	\begin{frame}{Risk Breakdown (I) \hspace{10cm} \hbox{\normalsize{\tradername}} }
+		\vspace*{5mm}
+		\begin{tcbposter}[coverage = {spread}, 
+			poster = {%showframe, 
+				columns = 1, rows=4, spacing=1mm}, 
+			boxes = {enhanced standard jigsaw, sharp corners=northwest,
+				arc=1mm,boxrule=0.4mm,colback=white,opacityback=0.75,
+				colframe=blue1,	title style={color=blue1}, fonttitle=\bfseries\scshape}
+			]
+			\posterbox[adjusted title=Value-at-Risk Book Hierarchy, top=0mm, left=0mm, right=0mm, bottom=0mm]
+			{name=vargraph, column=1, row=1, rowspan=0.875}
+			{ 
+				\centering
+				\includegraphics[width=0.99\linewidth]{\folder/\dt_\trader_0.pdf}  				
+			}	
+			\posterbox[adjusted title=Delta Exposure by Book, top=0mm, left=0mm, right=0mm, bottom=0mm]
+			{name=deltaexposure, column=1, below=vargraph, rowspan=1.75}
+			{ 
+			\centering
+			\includegraphics[width=0.99\linewidth]{\folder/\dt_\trader_1.pdf} 			
+			}	
+				
+			\posterbox[adjusted title=PnL Historical Simulation, top=0mm, left=0mm, right=0mm, bottom=0mm]
+			{name=pnlsimu, column=1, below=deltaexposure, rowspan=1.175}
+			{ 
+				\centering
+			\includegraphics[width=0.99\linewidth]{\folder/\dt_\trader_2.pdf} 
+			}
+		\end{tcbposter}
+	\end{frame}	
+
+	\begin{frame}{Risk Breakdown (II) \hspace{10cm} \hbox{\normalsize{\tradername}} }
+		\vspace*{5mm}
+		\begin{tcbposter}[coverage = {spread}, 
+			poster = {%showframe, 
+				columns = 1, rows=3, spacing=1mm}, 
+			boxes = {enhanced standard jigsaw, sharp corners=northwest,
+				arc=1mm,boxrule=0.4mm,colback=white,opacityback=0.75,
+				colframe=blue1,	title style={color=blue1}, fonttitle=\bfseries\scshape}
+			]
+			\posterbox[adjusted title=Extreme Value Analysis, top=0mm, left=0mm, right=0mm, bottom=0mm]
+			{name=evt, column=1, row=1, rowspan=1.2}
+			{ 
+				\centering
+				\includegraphics[width=0.99\linewidth]{\folder/\dt_\trader_evt.pdf}  				
+			}	
+			
+			
+			\posterbox[adjusted title={}, top=0mm, left=0mm, right=0mm, bottom=0mm]
+			{name=pnlsimu, column=1, below=evt}
+			{ 
+				\centering
+				%\includegraphics[width=0.99\linewidth]{\folder/\dt_\trader_2.pdf} 
+			}
+		\end{tcbposter}
+	\end{frame}	}
+	
+	
+
+	
+\end{document}

@@ -1,0 +1,1 @@
+C:\Users\mauricio.pereira\Anaconda3\python.exe C:\Users\mauricio.pereira\Anaconda3\cwp.py C:\Users\mauricio.pereira\Anaconda3 C:\Users\mauricio.pereira\Anaconda3\python.exe C:\Users\mauricio.pereira\Anaconda3\Scripts\jupyter-notebook-script.py "C:/Users/mauricio.pereira/Documents/GitHub/risk_report/src/A1_risk_report.ipynb"
