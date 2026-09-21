@@ -1,0 +1,7 @@
+# Mapa CNPJ -> código Broadcast do fundo, usado por src/captacao.py (separador ;).
+# codigo_broadcast: "FI" + "Código Anbima" que aparece na busca de Fundos do terminal (ex.: 1390643 -> FI1390643).
+# Pode também pôr só o código ANBIMA (1390643 ou C0001390643) que o script converte.
+# Linhas começando com # são ignoradas. Exemplo:
+# 12.345.678/0001-95;FI1234567;Fundo Exemplo FIC FIM
+cnpj;codigo_broadcast;nome
+66.198.405/0001-94;FI1390643;IT NOW TEVA ITBR SELIC IPCA TARGET 800
