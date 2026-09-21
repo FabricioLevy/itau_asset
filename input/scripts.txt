@@ -1,0 +1,18 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Scripts do Painel de Execução (src/painel.py)
+# ═══════════════════════════════════════════════════════════════════════════
+# Uma linha por script:
+#
+#     Nome | caminho do script.py | argumentos (opcional)
+#
+# - Linhas que começam com # são ignoradas.
+# - O caminho pode ser absoluto (C:\...\script.py) ou relativo à pasta src/.
+# - Só o caminho também funciona: o nome vira o nome do arquivo.
+# - Cada script roda com a própria pasta como diretório atual, então os
+#   caminhos relativos dentro dele (../input, ../output) continuam valendo.
+# - Os argumentos podem ser alterados no painel antes de clicar em RODAR.
+# - Depois de editar este arquivo, clique em "Recarregar lista" no painel.
+# ═══════════════════════════════════════════════════════════════════════════
+
+Relatório de Exposição | exposicao_html.py | 1
+Captação               | ../captacao/src/captacao.py
