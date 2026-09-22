@@ -91,6 +91,10 @@
 #   python captacao.py --data 18/09/2026
 #   python captacao.py C0000142697 00.807.777/0001-62 --data 18/09/2026
 #   python captacao.py --lista "C:\...\export_comdinheiro.xlsx"
+#   python captacao.py --dias 20                (últimos 20 dias úteis até o dia útil anterior)
+#   python captacao.py --inicio 01/09/2026 --data 18/09/2026
+#   Período: 1 arquivo (captacao_<inicio>_a_<fim>.xlsx) com 1 linha por fundo e dia útil; as
+#   colunas não levam a data (ela está em "Data da Análise"); dia sem dado fica em branco.
 # ─────────────────────────────────────────────
 
 import argparse
@@ -108,7 +112,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 import zipfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
@@ -316,8 +320,8 @@ def _pontuar_cabecalho(celulas):
 
 
 def _eh_comentario(celulas):
-    """Linha de comentário: 1ª célula '# texto' (ou só '#' com o resto vazio). '#N/D', '#REF!'
-    (erro de fórmula) e uma coluna de numeração chamada '#' são dados."""
+    """XLSX: linha de comentário = 1ª célula '# texto' (ou só '#' com o resto vazio). '#N/D',
+    '#REF!' (erro de fórmula) e uma coluna de numeração chamada '#' são dados."""
     if not celulas:
         return False
     primeira = str(celulas[0])
@@ -325,7 +329,10 @@ def _eh_comentario(celulas):
                 or (re.match(r"\s*#\s*$", primeira) and not any(str(c).strip() for c in celulas[1:])))
 
 
-_PARECE_ID = re.compile(r"[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}/[0-9A-Z]{4}-\d{2}|\bC\d{10}\b|\d{14}")
+# texto: comentário = linha física que começa com "# " (cerquilha + espaço) ou só "#" — também
+# entre aspas, como o Excel salva; "#\t..." (coluna '#' numa lista com tab) e "#N/D" são dados
+_COMENTARIO_TXT = re.compile(r'\s*"?#( |"?\s*$)')
+_PARECE_ID = re.compile(r"[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}/[0-9A-Z]{4}-\d{2}|\bC\d{10}\b|\d{6,}")
 
 
 def _linhas_do_arquivo(caminho):
@@ -334,29 +341,37 @@ def _linhas_do_arquivo(caminho):
     if os.path.splitext(caminho)[1].lower() in (".xlsx", ".xlsm", ".xls"):
         bruto = pd.read_excel(caminho, header=None, dtype=str).fillna("")
         linhas = [(i, [str(v) for v in lin]) for i, lin in enumerate(bruto.itertuples(index=False), start=1)]
-    else:
-        texto = _ler_texto(caminho)
-        fisicas = texto.splitlines()
-        # separador = o que melhor reconhece um cabeçalho nas 1as linhas não comentadas (empate: ; tab ,)
-        amostra = [ln for ln in fisicas if ln.strip() and not re.match(r'\s*"?#\s', ln)][:12]
-        sep = max(";\t,", key=lambda s: max([_pontuar_cabecalho(next(csv.reader([ln], delimiter=s)))
-                                             for ln in amostra] or [0]))
-        # arquivo inteiro de uma vez (célula com quebra de linha entre aspas). Se uma aspa sem
-        # par engolir linhas (registro longo, ou célula com várias linhas contendo CNPJ/código
-        # — eram outros fundos), cai p/ uma linha física por registro
-        linhas = []
-        leitor = csv.reader(texto.splitlines(keepends=True), delimiter=sep, strict=True)
-        try:
-            inicio = 1
-            for reg in leitor:
-                if leitor.line_num - inicio > 3 or (leitor.line_num > inicio and any(
-                        "\n" in c and _PARECE_ID.search(c.split("\n", 1)[1]) for c in reg)):
-                    raise csv.Error("registro atravessando linhas de outros fundos")
-                linhas.append((inicio, reg))
-                inicio = leitor.line_num + 1
-        except csv.Error:
-            linhas = [(i, next(csv.reader([ln], delimiter=sep))) for i, ln in enumerate(fisicas, start=1)]
-    return [(i, lin) for i, lin in linhas if any(str(c).strip() for c in lin) and not _eh_comentario(lin)]
+        return [(i, lin) for i, lin in linhas if any(str(c).strip() for c in lin) and not _eh_comentario(lin)]
+
+    texto = _ler_texto(caminho)
+    fisicas = texto.splitlines()
+    comentarios = {i for i, ln in enumerate(fisicas, start=1) if _COMENTARIO_TXT.match(ln)}
+    # separador = o que melhor reconhece um cabeçalho nas 1as linhas não comentadas (empate: ; tab ,)
+    amostra = [ln for i, ln in enumerate(fisicas, start=1) if ln.strip() and i not in comentarios][:12]
+    sep = max(";\t,", key=lambda s: max([_pontuar_cabecalho(next(csv.reader([ln], delimiter=s)))
+                                         for ln in amostra] or [0]))
+
+    def engoliu_linhas(reg):
+        # célula com várias linhas em que alguma linha interna tem o separador e cara de
+        # identificador = uma aspa sem par engoliu outros fundos (texto com quebra de linha
+        # legítima, mesmo citando um código, não tem o separador)
+        return any(sep in interna and _PARECE_ID.search(interna)
+                   for c in reg if "\n" in c for interna in c.split("\n")[1:])
+
+    # arquivo inteiro de uma vez (célula com quebra de linha entre aspas); se uma aspa sem par
+    # engolir linhas, cai p/ uma linha física por registro
+    linhas = []
+    leitor = csv.reader(texto.splitlines(keepends=True), delimiter=sep, strict=True)
+    try:
+        inicio = 1
+        for reg in leitor:
+            if leitor.line_num - inicio > 3 or engoliu_linhas(reg):
+                raise csv.Error("registro atravessando linhas de outros fundos")
+            linhas.append((inicio, reg))
+            inicio = leitor.line_num + 1
+    except csv.Error:
+        linhas = [(i, next(csv.reader([ln], delimiter=sep))) for i, ln in enumerate(fisicas, start=1)]
+    return [(i, lin) for i, lin in linhas if any(str(c).strip() for c in lin) and i not in comentarios]
 
 
 def carregar_lista(caminho):
@@ -679,26 +694,27 @@ def _rodar_lote(wb, nums, inicio, fim, timeout, pythoncom, atributo="Formula2"):
     t0 = ultimo_reenvio = time.time()
     t_consulta = None      # 1ª volta de consulta que o Excel respondeu (o prazo do #BCONN conta daí)
     reenvios = 0
-    ocupado_seguidas = 0
     ultimo_print = 0.0
     while pendentes and time.time() - t0 < timeout:
         pythoncom.PumpWaitingMessages()
         time.sleep(1.0)
+        # Excel ocupado (o add-in calculando) recusa chamadas por uns segundos: nesse caso
+        # larga a volta e tenta de novo na seguinte, até o --timeout — nada de desistir cedo
+        ocupado = False
         for n in list(pendentes):
-            if time.time() - t0 >= timeout or ocupado_seguidas >= 3:
+            if time.time() - t0 >= timeout:
                 break
             try:
-                textos[n] = topo(n, tentativas=4)  # aqui não espera 1 min por fundo: tenta de novo na volta seguinte
-                ocupado_seguidas = 0
+                textos[n] = topo(n, tentativas=4)
             except Exception as e:  # noqa
                 falhas[n] = f"erro ao consultar a célula: {e!r}"
-                ocupado_seguidas += 1
-                continue
+                ocupado = True
+                break
             if textos[n] not in PENDENTES:
                 pendentes.discard(n)
                 falhas.pop(n, None)
-        if ocupado_seguidas >= 3:
-            break  # Excel travado: a leitura final decide quem ainda dá p/ ler
+        if ocupado:
+            continue
         if t_consulta is None and textos:
             t_consulta = time.time()
         if (pendentes and t_consulta and reenvios >= 1 and time.time() - t_consulta > limite_bconn
@@ -707,10 +723,13 @@ def _rodar_lote(wb, nums, inicio, fim, timeout, pythoncom, atributo="Formula2"):
         if pendentes and time.time() - ultimo_reenvio > 6:
             for n in [n for n in pendentes if textos.get(n, "") in REENVIAR]:
                 try:
-                    escrever(n)
-                except Exception as e:  # noqa
+                    f = _formula_bch(n, inicio, fim)
+                    _com(lambda: setattr(abas[n].Range("A1"), atributo, f), tentativas=4)
+                except Exception as e:  # noqa — ocupado: reescreve na próxima rodada
                     falhas[n] = f"erro ao reescrever a fórmula: {e!r}"
-            reenvios += 1
+                    break
+            else:
+                reenvios += 1  # só conta a rodada de reenvio que foi até o fim
             ultimo_reenvio = time.time()
         if pendentes and time.time() - ultimo_print > 10:
             print(f"[INFO] aguardando Broadcast... {len(nums) - len(pendentes)}/{len(nums)} fundo(s) prontos")
@@ -856,7 +875,7 @@ def _consolidar_cvm(g):
             # subclasse vista antes na janela (e não encerrada: último PL > 0) que faltou no dia
             data_ts = pd.Timestamp(data)
             faltam = [sid for sid, s in subclasses.items() if sid not in sub_dia
-                      and not s[s["data"] < data_ts].empty and (_num(s[s["data"] < data_ts]["patrimonio"].iloc[-1]) or 0) > 0]
+                      and not s[s["data"] < data_ts].empty and _num(s[s["data"] < data_ts]["patrimonio"].iloc[-1]) != 0]
             if faltam:
                 prov |= set(FLUXOS)
                 obs.append(f"CVM: soma incompleta — {len(faltam)} subclasse(s) sem informe no dia")
@@ -875,19 +894,25 @@ def _consolidar_cvm(g):
     return pd.DataFrame(linhas).sort_values("data").reset_index(drop=True)
 
 
-def cvm_informe_diario(dia, cnpjs):
-    """Série do Informe Diário da CVM até `dia` (mês de `dia`; no começo do mês, também o
-    anterior, p/ ter D-1) p/ os CNPJs pedidos. Devolve dict:
+def cvm_informe_diario(dia, cnpjs, inicio=None):
+    """Série do Informe Diário da CVM de `inicio` (padrão: `dia`) até `dia`, p/ os CNPJs
+    pedidos — lê os meses do período e, se `inicio` cai no começo do mês, também o anterior
+    (histórico p/ a checagem de D-1). Devolve dict:
       series       {cnpj: DataFrame(data, CAMPOS, obs, prov_sub, n_sub)} até `dia` inclusive
       presentes    CNPJs que aparecem nos arquivos lidos
       ultima_fundo {cnpj: último dia com informe do fundo (mesmo depois de `dia`)}
       ultima_geral último dia publicado pela CVM no mês de `dia` ('' se o mês ainda não existe)
       sem_d1       True se o mês anterior (histórico p/ a checagem) não pôde ser lido"""
     alvo = set(cnpjs)
-    info = dict(series={}, presentes=set(), ultima_fundo={}, primeira_fundo={}, ultima_geral="", sem_d1=False)
-    meses = [dia]
-    if dia.day <= 10:
-        meses.insert(0, dia.replace(day=1) - timedelta(days=1))
+    desde = inicio or dia
+    info = dict(series={}, presentes=set(), ultima_fundo={}, ultima_geral="", sem_d1=False)
+    m = (desde.replace(day=1) - timedelta(days=1)).replace(day=1) if desde.day <= 10 else desde.replace(day=1)
+    meses = []
+    while (m.year, m.month) < (dia.year, dia.month):
+        meses.append(m)
+        m = (m + timedelta(days=32)).replace(day=1)
+    meses.append(dia)  # mês de `dia` (a própria data: dela sai ultima_geral)
+    so_historico = [m for m in meses if (m.year, m.month) < (desde.year, desde.month)]
     partes = []
     for mes_dia in meses:
         try:
@@ -896,16 +921,12 @@ def cvm_informe_diario(dia, cnpjs):
             partes += p
             if mes_dia == dia:
                 info["ultima_geral"] = ultima
-        except urllib.error.HTTPError as e:
-            if e.code == 404 and mes_dia == dia:
-                continue  # CVM ainda não criou o arquivo do mês: nada publicado
-            if mes_dia == dia:
+        except Exception as e:  # noqa
+            if mes_dia not in so_historico:
+                if isinstance(e, urllib.error.HTTPError) and e.code == 404:
+                    continue  # CVM ainda não criou o arquivo do mês: nada publicado
                 raise
-            info["sem_d1"] = True
-            print(f"[AVISO] informe da CVM de {mes_dia:%m/%Y} indisponível ({e!r}): sem D-1 p/ a checagem do PL")
-        except Exception as e:  # noqa — mês anterior é só histórico p/ a checagem; o do dia não
-            if mes_dia == dia:
-                raise
+            # mês anterior ao período é só histórico p/ a checagem
             info["sem_d1"] = True
             print(f"[AVISO] informe da CVM de {mes_dia:%m/%Y} indisponível ({e!r}): sem D-1 p/ a checagem do PL")
     if not partes:
@@ -913,39 +934,56 @@ def cvm_informe_diario(dia, cnpjs):
     df = pd.concat(partes, ignore_index=True)
     info["presentes"] = set(df["cnpj"])
     info["ultima_fundo"] = df.groupby("cnpj")["DT_COMPTC"].max().to_dict()
-    info["primeira_fundo"] = df.groupby("cnpj")["DT_COMPTC"].min().to_dict()
     df = df[df["DT_COMPTC"] <= dia.isoformat()]
     for col in CVM_CAMPOS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["ID_SUBCLASSE"] = df["ID_SUBCLASSE"].fillna("").str.strip()
     df["TP_FUNDO_CLASSE"] = df["TP_FUNDO_CLASSE"].fillna("").str.strip()
     for cnpj, g in df.groupby("cnpj"):
-        datas = sorted(g["DT_COMPTC"].unique())[-(JANELA_BCH_DIAS + 1):]  # D e até 10 dias antes
+        datas = sorted(g["DT_COMPTC"].unique())
+        primeira = next((k for k, d in enumerate(datas) if d >= desde.isoformat()), len(datas))
+        datas = datas[max(0, primeira - JANELA_BCH_DIAS):]  # o período e até 10 dias antes dele
         info["series"][cnpj] = _consolidar_cvm(g[g["DT_COMPTC"].isin(datas)])
     return info
 
 
+def cadastro_vazio():
+    return dict(nomes={}, tipos={}, situacoes={}, inicio={}, n_sub={})
+
+
 def cvm_cadastro(cnpjs):
-    """({cnpj: denominação social}, {cnpj: tipo de classe}, {cnpj: situação}) do cadastro da
-    CVM — classe primeiro, depois fundo; registro em funcionamento tem preferência."""
+    """Cadastro da CVM p/ os CNPJs: dict com nomes (denominação social), tipos (tipo de
+    classe), situacoes, inicio (Data_Inicio da classe, AAAA-MM-DD) e n_sub (subclasses não
+    canceladas da classe). Classe primeiro, depois fundo; registro ativo tem preferência."""
     alvo = set(cnpjs)
-    nomes, tipos, situacoes = {}, {}, {}
+    cad = cadastro_vazio()
     with _abrir_zip(CVM_CADASTRO, 24) as z:
+        id_classe = {}
         for arquivo, col, col_tipo in (("registro_classe.csv", "CNPJ_Classe", "Tipo_Classe"),
                                        ("registro_fundo.csv", "CNPJ_Fundo", "Tipo_Fundo")):
+            extras = ["ID_Registro_Classe", "Data_Inicio"] if col_tipo == "Tipo_Classe" else []
             with z.open(arquivo) as fh:
                 df = pd.read_csv(fh, sep=";", dtype=str, encoding="cp1252", encoding_errors="replace",
-                                 usecols=[col, "Denominacao_Social", "Situacao", col_tipo])
+                                 usecols=[col, "Denominacao_Social", "Situacao", col_tipo] + extras)
             df = df.assign(cnpj=df[col].map(normalizar_cnpj))
-            df = df[df["cnpj"].isin(alvo - set(nomes))]
+            df = df[df["cnpj"].isin(alvo - set(cad["nomes"]))]
             df = df.assign(cancelado=df["Situacao"].fillna("").str.contains("Cancel"))
             for cnpj, g in df.sort_values("cancelado", kind="stable").groupby("cnpj", sort=False):
                 # o cadastro tem espaços não separáveis (U+00A0) em alguns nomes
-                nomes[cnpj] = str(g["Denominacao_Social"].iloc[0] or "").replace("\xa0", " ").strip()
-                situacoes[cnpj] = str(g["Situacao"].iloc[0] or "")
+                cad["nomes"][cnpj] = str(g["Denominacao_Social"].iloc[0] or "").replace("\xa0", " ").strip()
+                cad["situacoes"][cnpj] = str(g["Situacao"].iloc[0] or "")
                 if col_tipo == "Tipo_Classe":
-                    tipos[cnpj] = str(g[col_tipo].iloc[0] or "")
-    return nomes, tipos, situacoes
+                    cad["tipos"][cnpj] = str(g[col_tipo].iloc[0] or "")
+                    cad["inicio"][cnpj] = str(g["Data_Inicio"].iloc[0] or "")
+                    id_classe[str(g["ID_Registro_Classe"].iloc[0])] = cnpj
+        if id_classe and "registro_subclasse.csv" in z.namelist():
+            with z.open("registro_subclasse.csv") as fh:
+                sub = pd.read_csv(fh, sep=";", dtype=str, encoding="cp1252", encoding_errors="replace",
+                                  usecols=["ID_Registro_Classe", "Situacao"])
+            sub = sub[sub["ID_Registro_Classe"].isin(id_classe) & ~sub["Situacao"].fillna("").str.contains("Cancel")]
+            for idc, n in sub.groupby("ID_Registro_Classe").size().items():
+                cad["n_sub"][id_classe[idc]] = int(n)
+    return cad
 
 
 # ── consistência e combinação das fontes ──────────────────────────────────────
@@ -961,6 +999,14 @@ REGRAS = {
     "pl_rolado": ("PL provisório", {"patrimonio"}),
     "pl_repetido": ("PL provisório", {"patrimonio"}),
 }
+
+
+def _linha_igual(v, va):
+    """Duas linhas (dicts de CAMPOS) iguais: cota até 1e-9 relativo; demais até R$ 0,005 / exato."""
+    if not all(_tem(v[c]) and _tem(va[c]) for c in CAMPOS) or not va["cota"]:
+        return False
+    return (abs(v["cota"] / va["cota"] - 1) <= 1e-9
+            and all(abs(v[c] - va[c]) < 0.005 for c in ("captacao", "resgate", "patrimonio", "cotistas")))
 
 
 def analisar_serie(serie, dia, _nivel=0):
@@ -997,14 +1043,14 @@ def analisar_serie(serie, dia, _nivel=0):
         if va["patrimonio"] is not None:
             r["pl_repetido"] = abs(va["patrimonio"] - pl) < 0.005
         cotas = [x for x in (_num(c) for c in anteriores["cota"]) if x]
+        linhas_ant = [{c: _num(x.get(c)) for c in CAMPOS} for _, x in anteriores.iterrows()]
         # a cota mexe todo dia? (>= 80% dos dias da janela) — fundo com cota atualizada só de
-        # vez em quando, ou parado, tem linhas iguais de verdade
-        mudancas = [abs(b / a_ - 1) > 1e-9 for a_, b in zip(cotas, cotas[1:])]
+        # vez em quando, ou parado, tem linhas iguais de verdade. Dia que já era cópia do
+        # anterior não conta como "cota parada" (senão duas cópias seguidas desarmam a regra)
+        mudancas = [abs(y["cota"] / x["cota"] - 1) > 1e-9 for x, y in zip(linhas_ant, linhas_ant[1:])
+                    if x["cota"] and y["cota"] and not _linha_igual(y, x)]
         cota_diaria = len(mudancas) >= 3 and sum(mudancas) >= 0.8 * len(mudancas)
-        igual = (all(_tem(v[c]) and _tem(va[c]) for c in CAMPOS)
-                 and abs(v["cota"] / va["cota"] - 1) <= 1e-9 if va["cota"] else False)
-        igual = igual and all(abs(v[c] - va[c]) < 0.005 for c in ("captacao", "resgate", "patrimonio", "cotistas"))
-        if regra is None and igual and alvo.weekday() < 5 and (capt or resg or cota_diaria):
+        if regra is None and _linha_igual(v, va) and dia_util(dia) and (capt or resg or cota_diaria):
             regra = "repetida"
         if va["patrimonio"] is not None and va["cota"] and cota:
             pl_ant = va["patrimonio"]
@@ -1080,14 +1126,14 @@ def _iguais(campo, a, b):
 
 def _status_cvm_sem_linha(f, dia, info, cadastro):
     """Motivo de a CVM não ter a linha do dia p/ o fundo."""
-    _, tipos, situacoes = cadastro
-    tipo, situacao = tipos.get(f["cnpj"], ""), situacoes.get(f["cnpj"], "")
+    tipo = cadastro["tipos"].get(f["cnpj"], "")
+    situacao = cadastro["situacoes"].get(f["cnpj"], "")
+    inicio = cadastro["inicio"].get(f["cnpj"], "")
     d = dia.isoformat()
+    if inicio > d:
+        return f"sem dado em {dia:%d/%m/%Y} (a classe só começou em {inicio[8:]}/{inicio[5:7]}/{inicio[:4]})"
     if f["cnpj"] in info["presentes"]:
         extra = f"; situação no cadastro: {situacao}" if situacao and situacao != "Em Funcionamento Normal" else ""
-        primeira = info["primeira_fundo"].get(f["cnpj"], "")
-        if primeira > d:
-            return f"sem dado em {dia:%d/%m/%Y} (o fundo só passou a informar em {primeira[8:]}/{primeira[5:7]}/{primeira[:4]}{extra})"
         if info["ultima_fundo"].get(f["cnpj"], "") > d:
             return f"sem informe do fundo em {dia:%d/%m/%Y} (feriado ou dia não reportado; há dias posteriores{extra})"
         if extra:
@@ -1106,99 +1152,129 @@ def _status_cvm_sem_linha(f, dia, info, cadastro):
     return msg
 
 
-def montar_linhas(fundos, dia, bc, bc_motivo, cvm_info, cvm_motivo, cadastro):
-    """Combina Broadcast e CVM campo a campo. Devolve lista de dicts (1 por fundo)."""
-    nomes = cadastro[0]
-    series = cvm_info["series"]
+def _ultimo_dia_com_dado(f, dia, bc, bc_motivo, cvm_info, cvm_motivo):
+    """Último dia antes de `dia` (dentro da janela) com linha do fundo em alguma das fontes."""
+    datas = []
+    serie_bc = bc.get(f["num"]) if f["num"] and f["prefixo"] == "C" and not bc_motivo else None
+    serie_cvm = cvm_info["series"].get(f["cnpj"]) if f["cnpj"] and not cvm_motivo else None
+    for s in (serie_bc, serie_cvm):
+        if isinstance(s, pd.DataFrame) and not s.empty:
+            datas += [d for d in s["data"] if d < pd.Timestamp(dia)]
+    return max(datas).date() if datas else None
+
+
+def montar_linhas(fundos, dia, bc, bc_motivo, cvm_info, cvm_motivo, cadastro, ultimo_disponivel=True):
+    """Combina Broadcast e CVM campo a campo. Devolve lista de dicts (1 por fundo).
+    Fundo sem dado no dia em NENHUMA fonte (ex.: ETF, que a ANBIMA publica com atraso e a CVM
+    não cobre) sai com o último dia disponível da janela — a 'Data da Análise' da linha mostra
+    esse dia e a aba Fontes marca a defasagem (ultimo_disponivel=False deixa em branco)."""
     linhas = []
     for f in fundos:
-        obs = list(f["avisos"])
-        if not f["num"]:
-            b = analisar_serie("sem código ANBIMA", dia)
-        elif f["prefixo"] == "S":
-            # o ticker "FI" + número vale p/ a classe; p/ subclasse não foi confirmado
-            b = analisar_serie("código de subclasse ANBIMA (S…): ticker do Broadcast não confirmado — não consultado", dia)
-        elif bc_motivo:
-            b = analisar_serie(bc_motivo, dia)
-        else:
-            b = analisar_serie(bc.get(f["num"]), dia)
-
-        linha_cvm = None
-        if not f["cnpj"]:
-            c = analisar_serie("sem CNPJ", dia)
-        elif cvm_motivo:
-            c = analisar_serie(cvm_motivo, dia)
-        else:
-            s = series.get(f["cnpj"])
-            if s is not None and (s["data"] == pd.Timestamp(dia)).any():
-                linha_cvm = s[s["data"] == pd.Timestamp(dia)].iloc[-1]
-            if linha_cvm is None:
-                c = analisar_serie(_status_cvm_sem_linha(f, dia, cvm_info, cadastro), dia)
-            elif f["prefixo"] == "S" and linha_cvm["n_sub_janela"] > 1:
-                # a CVM não liga a subclasse ANBIMA à subclasse dela: a soma da classe não serve
-                c = analisar_serie(f"CVM só tem a classe inteira ({linha_cvm['n_sub_janela']} subclasses); "
-                                   f"sem correspondência com a subclasse ANBIMA "
-                                   f"{codigo_anbima(f['prefixo'], f['num'])}", dia)
-                linha_cvm = None
-            else:
-                c = analisar_serie(s, dia)
-                if linha_cvm["previa_sub"]:
-                    c["previa"] = True  # alguma subclasse em prévia: a soma dos fluxos/cotistas não vale
-                if linha_cvm["obs"]:
-                    obs.append(linha_cvm["obs"])
-                if linha_cvm["prov_sub"]:
-                    c["provisorios"] |= linha_cvm["prov_sub"]
-                    if c["status"] == "ok":
-                        c["status"] = "provisório (subclasses)"
-                if cvm_info["sem_d1"] and c["residuo_pl"] is None:
-                    obs.append("CVM: sem o dia anterior (mês anterior indisponível) — checagem do PL não feita")
-        vb, vc = b["valores"], c["valores"]
-
-        valor, fonte = {}, {}
-        for campo in CAMPOS:
-            vb_c = vb.get(campo) if vb else None
-            vc_c = vc.get(campo) if vc else None
-            # zeros de prévia (cotistas = 0) nunca vão para a planilha, de nenhuma fonte
-            if b["previa"] and campo in ("captacao", "resgate", "cotistas"):
-                vb_c = None
-            if c["previa"] and campo in ("captacao", "resgate", "cotistas"):
-                vc_c = None
-            b_prov, c_prov = campo in b["provisorios"], campo in c["provisorios"]
-            if _tem(vb_c) and not (b_prov and _tem(vc_c) and not c_prov):
-                valor[campo], fonte[campo] = vb_c, "Broadcast" + (" (provisório)" if b_prov else "")
-            elif _tem(vc_c):
-                valor[campo], fonte[campo] = vc_c, "CVM" + (" (provisório)" if c_prov else "")
-            else:
-                valor[campo], fonte[campo] = None, ""
-
-        for nome_fonte, a in (("Broadcast", b), ("CVM", c)):
-            m = _motivo(nome_fonte, a)
-            if m:
-                obs.append(m)
-        usados_cvm = [NOMES_CAMPOS[k] for k in CAMPOS if fonte[k].startswith("CVM") and k in b["provisorios"]]
-        if usados_cvm:
-            obs.append("usados da CVM: " + ", ".join(usados_cvm))
-        brancos = [NOMES_CAMPOS[k] for k in ("captacao", "resgate", "cotistas") if not fonte[k]
-                   and (b["previa"] or c["previa"])]
-        if brancos:
-            obs.append(f"{'/'.join(brancos)} em branco até a ANBIMA ou a CVM fecharem o dia")
-        if not b["provisorios"] and not c["provisorios"] and b["pl_repetido"]:
-            obs.append("PL do Broadcast igual ao do dia anterior")
-        if vb and vc:
-            div = [NOMES_CAMPOS[k] for k in CAMPOS
-                   if k not in b["provisorios"] and k not in c["provisorios"]
-                   and _tem(vb.get(k)) and _tem(vc.get(k)) and not _iguais(k, vb[k], vc[k])]
-            if div:
-                obs.append("Broadcast × CVM divergem em: " + ", ".join(div))
-
-        linhas.append(dict(
-            data=dia, codigo_anbima=codigo_anbima(f["prefixo"], f["num"]), codigo_broadcast=codigo_broadcast(f["num"]),
-            cnpj=formatar_cnpj(f["cnpj"]) if f["cnpj"] else "",
-            razao_social=nomes.get(f["cnpj"]) or f.get("nome", ""),
-            valor=valor, fonte=fonte, bc=vb or {}, cvm=vc or {},
-            residuo_bc=b["residuo_pl"], residuo_cvm=c["residuo_pl"],
-            status_bc=b["status"], status_cvm=c["status"], obs="; ".join(obs)))
+        ln = _combinar(f, dia, bc, bc_motivo, cvm_info, cvm_motivo, cadastro)
+        if ultimo_disponivel and not any(_tem(v) for v in ln["valor"].values()):
+            anterior = _ultimo_dia_com_dado(f, dia, bc, bc_motivo, cvm_info, cvm_motivo)
+            ln_ant = _combinar(f, anterior, bc, bc_motivo, cvm_info, cvm_motivo, cadastro) if anterior else None
+            if ln_ant and any(_tem(v) for v in ln_ant["valor"].values()):
+                ln_ant["fonte"] = {k: f"{fo} — dado de {anterior:%d/%m}" if fo else "" for k, fo in ln_ant["fonte"].items()}
+                ln_ant["obs"] = "; ".join(x for x in (
+                    f"sem dado de {dia:%d/%m/%Y} em nenhuma fonte (Broadcast: {ln['status_bc']}; CVM: {ln['status_cvm']}) "
+                    f"— usado o último dia disponível, {anterior:%d/%m/%Y}", ln_ant["obs"]) if x)
+                ln = ln_ant
+        linhas.append(ln)
     return linhas
+
+
+def _combinar(f, dia, bc, bc_motivo, cvm_info, cvm_motivo, cadastro):
+    """Linha de um fundo num dia: Broadcast e CVM combinados campo a campo."""
+    nomes = cadastro["nomes"]
+    series = cvm_info["series"]
+    obs = list(f["avisos"])
+    if not f["num"]:
+        b = analisar_serie("sem código ANBIMA", dia)
+    elif f["prefixo"] == "S":
+        # o ticker "FI" + número vale p/ a classe; p/ subclasse não foi confirmado
+        b = analisar_serie("código de subclasse ANBIMA (S…): ticker do Broadcast não confirmado — não consultado", dia)
+    elif bc_motivo:
+        b = analisar_serie(bc_motivo, dia)
+    else:
+        b = analisar_serie(bc.get(f["num"]), dia)
+
+    linha_cvm = None
+    if not f["cnpj"]:
+        c = analisar_serie("sem CNPJ", dia)
+    elif cvm_motivo:
+        c = analisar_serie(cvm_motivo, dia)
+    else:
+        s = series.get(f["cnpj"])
+        if s is not None and (s["data"] == pd.Timestamp(dia)).any():
+            linha_cvm = s[s["data"] == pd.Timestamp(dia)].iloc[-1]
+        if linha_cvm is None:
+            c = analisar_serie(_status_cvm_sem_linha(f, dia, cvm_info, cadastro), dia)
+        elif f["prefixo"] == "S" and max(linha_cvm["n_sub_janela"], cadastro["n_sub"].get(f["cnpj"], 0)) > 1:
+            # a CVM não liga a subclasse ANBIMA à subclasse dela: a soma da classe não serve
+            n = max(linha_cvm["n_sub_janela"], cadastro["n_sub"].get(f["cnpj"], 0))
+            c = analisar_serie(f"CVM só tem a classe inteira ({n} subclasses); "
+                               f"sem correspondência com a subclasse ANBIMA "
+                               f"{codigo_anbima(f['prefixo'], f['num'])}", dia)
+            linha_cvm = None
+        else:
+            c = analisar_serie(s, dia)
+            if linha_cvm["previa_sub"]:
+                c["previa"] = True  # alguma subclasse em prévia: a soma dos fluxos/cotistas não vale
+            if linha_cvm["obs"]:
+                obs.append(linha_cvm["obs"])
+            if linha_cvm["prov_sub"]:
+                c["provisorios"] |= linha_cvm["prov_sub"]
+                if c["status"] == "ok":
+                    c["status"] = "provisório (subclasses)"
+            if cvm_info["sem_d1"] and c["residuo_pl"] is None:
+                obs.append("CVM: sem o dia anterior (mês anterior indisponível) — checagem do PL não feita")
+    vb, vc = b["valores"], c["valores"]
+
+    valor, fonte = {}, {}
+    for campo in CAMPOS:
+        vb_c = vb.get(campo) if vb else None
+        vc_c = vc.get(campo) if vc else None
+        # zeros de prévia (cotistas = 0) nunca vão para a planilha, de nenhuma fonte
+        if b["previa"] and campo in ("captacao", "resgate", "cotistas"):
+            vb_c = None
+        if c["previa"] and campo in ("captacao", "resgate", "cotistas"):
+            vc_c = None
+        b_prov, c_prov = campo in b["provisorios"], campo in c["provisorios"]
+        if _tem(vb_c) and not (b_prov and _tem(vc_c) and not c_prov):
+            valor[campo], fonte[campo] = vb_c, "Broadcast" + (" (provisório)" if b_prov else "")
+        elif _tem(vc_c):
+            valor[campo], fonte[campo] = vc_c, "CVM" + (" (provisório)" if c_prov else "")
+        else:
+            valor[campo], fonte[campo] = None, ""
+
+    for nome_fonte, a in (("Broadcast", b), ("CVM", c)):
+        m = _motivo(nome_fonte, a)
+        if m:
+            obs.append(m)
+    usados_cvm = [NOMES_CAMPOS[k] for k in CAMPOS if fonte[k].startswith("CVM") and k in b["provisorios"]]
+    if usados_cvm:
+        obs.append("usados da CVM: " + ", ".join(usados_cvm))
+    brancos = [NOMES_CAMPOS[k] for k in ("captacao", "resgate", "cotistas") if not fonte[k]
+               and (b["previa"] or c["previa"])]
+    if brancos:
+        obs.append(f"{'/'.join(brancos)} em branco até a ANBIMA ou a CVM fecharem o dia")
+    if not b["provisorios"] and not c["provisorios"] and b["pl_repetido"]:
+        obs.append("PL do Broadcast igual ao do dia anterior")
+    if vb and vc:
+        div = [NOMES_CAMPOS[k] for k in CAMPOS
+               if k not in b["provisorios"] and k not in c["provisorios"]
+               and _tem(vb.get(k)) and _tem(vc.get(k)) and not _iguais(k, vb[k], vc[k])]
+        if div:
+            obs.append("Broadcast × CVM divergem em: " + ", ".join(div))
+
+    return dict(
+        data=dia, codigo_anbima=codigo_anbima(f["prefixo"], f["num"]), codigo_broadcast=codigo_broadcast(f["num"]),
+        cnpj=formatar_cnpj(f["cnpj"]) if f["cnpj"] else "",
+        razao_social=nomes.get(f["cnpj"]) or f.get("nome", ""),
+        valor=valor, fonte=fonte, bc=vb or {}, cvm=vc or {},
+        residuo_bc=b["residuo_pl"], residuo_cvm=c["residuo_pl"],
+        status_bc=b["status"], status_cvm=c["status"], obs="; ".join(obs))
 
 
 # ── planilha ─────────────────────────────────────────────────────────────────
@@ -1209,7 +1285,9 @@ def _titulo(linhas):
     return "Broadcast+" if fontes == {"Broadcast"} else "CVM" if fontes == {"CVM"} else "sem dados"
 
 
-def salvar_xlsx(linhas, dia, caminho):
+def salvar_xlsx(linhas, dia, caminho, periodo=False):
+    """Grava as abas Captacao e Fontes. Um dia: a data vai nos nomes das colunas (como no
+    comdinheiro). Período (periodo=True): 1 linha por fundo e dia, colunas sem data."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
@@ -1218,7 +1296,7 @@ def salvar_xlsx(linhas, dia, caminho):
     ws = wb.active
     ws.title = "Captacao"
     ws.append([_titulo(linhas)])  # linha 1, no lugar do "comdinheiro" do layout original
-    ws.append([titulo.format(d=d) for _, titulo in LAYOUT])
+    ws.append([titulo.replace(" {d}", "") if periodo else titulo.format(d=d) for _, titulo in LAYOUT])
     for ln in linhas:
         v = ln["valor"]
         cot = v["cotistas"]
@@ -1271,7 +1349,8 @@ def salvar_xlsx(linhas, dia, caminho):
 
 
 def _n_fundos_broadcast(caminho):
-    """Quantos fundos de uma planilha já gravada têm algum campo vindo do Broadcast."""
+    """Quantos fundos de uma planilha já gravada têm resposta do Broadcast (algum valor bruto
+    nas colunas '<campo> Broadcast' da aba Fontes, usado ou não na planilha)."""
     from openpyxl import load_workbook
     try:
         fs = load_workbook(caminho, read_only=True)["Fontes"]
@@ -1279,15 +1358,17 @@ def _n_fundos_broadcast(caminho):
     except Exception:  # noqa
         return 0
     cab = list(linhas[0]) if linhas else []
-    cols = [j for j, t in enumerate(cab) if str(t or "").startswith("Fonte ")]
-    return sum(any(str(lin[j] or "").startswith("Broadcast") for j in cols) for lin in linhas[1:])
+    cols = [j for j, t in enumerate(cab) if str(t or "").endswith(" Broadcast") and not str(t).startswith("Status")]
+    return sum(any(lin[j] is not None for j in cols) for lin in linhas[1:])
 
 
-def _destino(out, dia, selecao=False):
+def _destino(out, dia, selecao=False, inicio=None):
     """Caminho do .xlsx a partir de --out (arquivo, pasta existente, pasta terminada em
     barra, ou vazio = padrão). Nome sem extensão conhecida ganha '.xlsx'. Rodada só com
-    alguns fundos (linha de comando) ganha '_selecao' p/ não tomar o lugar da lista inteira."""
-    nome_padrao = f"captacao_{dia:%Y%m%d}{'_selecao' if selecao else ''}.xlsx"
+    alguns fundos (linha de comando) ganha '_selecao' p/ não tomar o lugar da lista inteira;
+    período vira captacao_<inicio>_a_<fim>."""
+    datas = f"{inicio:%Y%m%d}_a_{dia:%Y%m%d}" if inicio and inicio < dia else f"{dia:%Y%m%d}"
+    nome_padrao = f"captacao_{datas}{'_selecao' if selecao else ''}.xlsx"
     if not out:
         return os.path.join(SAIDA_DIR, nome_padrao)
     if os.path.isdir(out) or out.endswith(("/", "\\")):
@@ -1321,10 +1402,35 @@ def _data(s):
     return datetime.strptime(s, "%d/%m/%Y").date()
 
 
+def _pascoa(ano):
+    """Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher)."""
+    a, b, c = ano % 19, ano // 100, ano % 100
+    d, e = b // 4, b % 4
+    g = (b - (b + 8) // 25 + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    return date(ano, (h + l - 7 * m + 114) // 31, (h + l - 7 * m + 114) % 31 + 1)
+
+
+def feriados_nacionais(ano):
+    """Feriados nacionais (calendário da ANBIMA): fixos + Carnaval, Sexta-feira Santa e
+    Corpus Christi; Consciência Negra (20/11) a partir de 2024."""
+    p = _pascoa(ano)
+    fixos = [(1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (12, 25)] + ([(11, 20)] if ano >= 2024 else [])
+    return {date(ano, m, d) for m, d in fixos} | {p - timedelta(days=48), p - timedelta(days=47),
+                                                   p - timedelta(days=2), p + timedelta(days=60)}
+
+
+def dia_util(d):
+    return d.weekday() < 5 and d not in feriados_nacionais(d.year)
+
+
 def dia_util_anterior(d):
-    """Dia útil (seg-sex) anterior a d. Não conhece feriados — use --data nesses casos."""
+    """Dia útil anterior a d (seg-sex, fora os feriados nacionais)."""
     d -= timedelta(days=1)
-    while d.weekday() >= 5:
+    while not dia_util(d):
         d -= timedelta(days=1)
     return d
 
@@ -1346,9 +1452,17 @@ def main(argv=None):
                     help="CSV/XLSX com CNPJ, código ANBIMA e nome dos fundos (padrão: ../input/fundos_captacao.csv); "
                          "aceita o próprio export do comdinheiro")
     ap.add_argument("--data", type=_data, default=dia_util_anterior(hoje),
-                    help="data da análise dd/mm/aaaa (padrão: dia útil anterior a hoje)")
+                    help="data da análise dd/mm/aaaa (padrão: dia útil anterior a hoje); num período, é o último dia")
+    periodo = ap.add_mutually_exclusive_group()
+    periodo.add_argument("--inicio", type=_data,
+                         help="período: 1º dia dd/mm/aaaa (vai até --data); sai 1 linha por fundo e dia útil")
+    periodo.add_argument("--dias", type=int,
+                         help="período: os últimos N dias úteis até --data (ex.: --dias 20)")
     ap.add_argument("--sem-broadcast", action="store_true", help="não consulta o Broadcast (só CVM)")
     ap.add_argument("--sem-cvm", action="store_true", help="não consulta a CVM (só Broadcast; sem razão social)")
+    ap.add_argument("--so-data-exata", action="store_true",
+                    help="fundo sem dado no dia em nenhuma fonte fica em branco (padrão: usa o último dia "
+                         "disponível, com a data real na coluna 'Data da Análise' da linha)")
     ap.add_argument("--timeout", type=float, default=120.0, help="espera máxima (s) pela resposta do Broadcast (padrão 120)")
     ap.add_argument("--out", help="arquivo .xlsx ou pasta de saída (padrão: ../output/captacao/captacao_<yyyymmdd>.xlsx)")
     args = ap.parse_args(argv)
@@ -1356,6 +1470,21 @@ def main(argv=None):
     dia = args.data
     if dia > hoje:
         ap.error("--data no futuro")
+    inicio = args.inicio
+    if args.dias is not None:
+        if args.dias < 1:
+            ap.error("--dias precisa ser >= 1")
+        inicio = dia
+        for _ in range(args.dias - 1):
+            inicio = dia_util_anterior(inicio)
+    if inicio and inicio > dia:
+        ap.error("--inicio depois de --data")
+    # dias da análise: só o --data, ou os dias úteis do período
+    dias = [dia]
+    if inicio and inicio < dia:
+        dias = [inicio + timedelta(days=k) for k in range((dia - inicio).days + 1)]
+        dias = [d for d in dias if dia_util(d)] or [dia]
+    periodo = len(dias) > 1 or bool(inicio and inicio < dia)
 
     lista_path = args.lista or LISTA_PADRAO
     if args.lista and not os.path.isfile(args.lista):
@@ -1367,7 +1496,7 @@ def main(argv=None):
         print(f"[ERRO] não consegui ler a lista {os.path.abspath(lista_path)}: {e}")
         return 1
     nome_automatico = not args.out or os.path.isdir(args.out) or args.out.endswith(("/", "\\"))
-    destino = _destino(args.out, dia, selecao=bool(args.fundos))
+    destino = _destino(args.out, dia, selecao=bool(args.fundos), inicio=dias[0] if periodo else None)
     if not _pasta_gravavel(destino):
         return 1
     fundos, invalidas = resolver_fundos(args.fundos, lista)
@@ -1382,7 +1511,10 @@ def main(argv=None):
                   f"       está vazia ou não existe. Passe CNPJs/códigos ANBIMA na linha de comando ou preencha a lista\n"
                   f"       (colunas cnpj;codigo_anbima;nome — ex.: 00.807.777/0001-62;C0000019119;DAYCOVAL ...).")
         return 1
-    print(f"[INFO] {len(fundos)} fundo(s), data da análise {dia:%d/%m/%Y}")
+    if periodo:
+        print(f"[INFO] {len(fundos)} fundo(s), período {dias[0]:%d/%m/%Y} a {dia:%d/%m/%Y} ({len(dias)} dia(s) útil(eis))")
+    else:
+        print(f"[INFO] {len(fundos)} fundo(s), data da análise {dia:%d/%m/%Y}")
 
     # Broadcast
     bc, bc_motivo = {}, ""
@@ -1398,7 +1530,7 @@ def main(argv=None):
     else:
         print(f"[INFO] consultando {len(nums)} fundo(s) no Broadcast...")
         try:
-            bc = consultar_broadcast(nums, dia - timedelta(days=JANELA_BCH_DIAS), dia, args.timeout)
+            bc = consultar_broadcast(nums, dias[0] - timedelta(days=JANELA_BCH_DIAS), dia, args.timeout)
         except Exception as e:  # noqa
             bc_motivo = f"erro ao consultar o Broadcast: {e!r}"
             print(f"[AVISO] {bc_motivo} — seguindo só com a CVM.")
@@ -1407,15 +1539,15 @@ def main(argv=None):
             print(f"[AVISO] {bc_motivo} Faça login no terminal e rode de novo. Seguindo só com a CVM.")
 
     # CVM
-    cvm_info = dict(series={}, presentes=set(), ultima_fundo={}, primeira_fundo={}, ultima_geral="", sem_d1=False)
-    cvm_motivo, cadastro = "", ({}, {}, {})
+    cvm_info = dict(series={}, presentes=set(), ultima_fundo={}, ultima_geral="", sem_d1=False)
+    cvm_motivo, cadastro = "", cadastro_vazio()
     cnpjs = list(dict.fromkeys(f["cnpj"] for f in fundos if f["cnpj"]))
     if args.sem_cvm:
         cvm_motivo = "não consultada (--sem-cvm)"
     elif cnpjs:
         print("[INFO] lendo dados abertos da CVM (informe diário e cadastro)...")
         try:
-            cvm_info = cvm_informe_diario(dia, cnpjs)
+            cvm_info = cvm_informe_diario(dia, cnpjs, inicio=dias[0])
         except Exception as e:  # noqa
             cvm_motivo = f"erro no informe diário da CVM: {e!r}"
             print(f"[AVISO] {cvm_motivo}")
@@ -1424,33 +1556,54 @@ def main(argv=None):
         except Exception as e:  # noqa
             print(f"[AVISO] erro no cadastro da CVM (razão social): {e!r}")
 
-    linhas = montar_linhas(fundos, dia, bc, bc_motivo, cvm_info, cvm_motivo, cadastro)
-    for ln in linhas:
-        rotulo = ln["codigo_anbima"] or ln["cnpj"]
-        fontes = sorted({fo.split(" (")[0] for fo in ln["fonte"].values() if fo})
-        preenchidos = sum(_tem(v) for v in ln["valor"].values())
-        msg = f"{rotulo}: {preenchidos}/{len(CAMPOS)} campos ({' + '.join(fontes) or 'sem dados'})"
-        if ln["status_bc"] != "ok" and not bc_motivo:
-            msg += f" | Broadcast: {ln['status_bc']}"
-        print(("[OK] " if preenchidos else "[AVISO] ") + msg + (f" | {ln['obs']}" if ln["obs"] else ""))
+    if not periodo:
+        linhas = montar_linhas(fundos, dia, bc, bc_motivo, cvm_info, cvm_motivo, cadastro,
+                               ultimo_disponivel=not args.so_data_exata)
+        for ln in linhas:
+            rotulo = ln["codigo_anbima"] or ln["cnpj"]
+            fontes = sorted({fo.split(" (")[0] for fo in ln["fonte"].values() if fo})
+            preenchidos = sum(_tem(v) for v in ln["valor"].values())
+            msg = f"{rotulo}: {preenchidos}/{len(CAMPOS)} campos ({' + '.join(fontes) or 'sem dados'})"
+            if ln["status_bc"] != "ok" and not bc_motivo:
+                msg += f" | Broadcast: {ln['status_bc']}"
+            print(("[OK] " if preenchidos else "[AVISO] ") + msg + (f" | {ln['obs']}" if ln["obs"] else ""))
+    else:
+        # período: cada dia útil é uma linha por fundo; dia sem dado fica em branco (o dia
+        # anterior já é linha própria — não repete o último disponível)
+        linhas = []
+        for d in dias:
+            do_dia = montar_linhas(fundos, d, bc, bc_motivo, cvm_info, cvm_motivo, cadastro, ultimo_disponivel=False)
+            linhas += do_dia
+            com_dado = sum(any(_tem(v) for v in ln["valor"].values()) for ln in do_dia)
+            prov = sum(any("provisório" in fo for fo in ln["fonte"].values()) for ln in do_dia)
+            print(f"[INFO] {d:%d/%m/%Y}: {com_dado}/{len(do_dia)} fundo(s) com dados"
+                  + (f", {prov} com valor provisório" if prov else ""))
+        for f in fundos:
+            rotulo = codigo_anbima(f["prefixo"], f["num"]) or formatar_cnpj(f["cnpj"])
+            sem = [ln["data"] for ln in linhas if (ln["codigo_anbima"] or ln["cnpj"]) == rotulo
+                   and not any(_tem(v) for v in ln["valor"].values())]
+            if sem:
+                print(f"[AVISO] {rotulo}: sem dados em {len(sem)} dia(s) ({', '.join(f'{x:%d/%m}' for x in sem[:8])}"
+                      f"{'...' if len(sem) > 8 else ''})")
 
     # não troca a foto do dia por uma com menos Broadcast (terminal fechado, --sem-broadcast,
     # falha em parte dos fundos): a nova vai p/ outro arquivo e a antiga fica
     if nome_automatico and os.path.isfile(destino):
-        n_novo = sum(any(fo.startswith("Broadcast") for fo in ln["fonte"].values()) for ln in linhas)
+        n_novo = sum(any(_tem(x) for x in ln["bc"].values()) for ln in linhas)
         n_atual = _n_fundos_broadcast(destino)
         if n_novo < n_atual:
             sufixo = "_so_cvm" if n_novo == 0 else f"_parcial_{datetime.now():%H%M%S}"
             destino = os.path.splitext(destino)[0] + sufixo + ".xlsx"
-            print(f"[AVISO] a planilha do dia já tem {n_atual} fundo(s) com dados do Broadcast e esta rodada tem "
+            print(f"[AVISO] a planilha já tem {n_atual} linha(s) com dados do Broadcast e esta rodada tem "
                   f"{n_novo}; para não perder a anterior, esta vai para {os.path.basename(destino)}")
     try:
-        destino = salvar_xlsx(linhas, dia, destino)
+        destino = salvar_xlsx(linhas, dia, destino, periodo=periodo)
     except OSError as e:
-        reserva = os.path.join(SAIDA_DIR, f"captacao_{dia:%Y%m%d}_{datetime.now():%H%M%S}.xlsx")
+        base_reserva = os.path.splitext(_destino(None, dia, bool(args.fundos), dias[0] if periodo else None))[0]
+        reserva = f"{base_reserva}_{datetime.now():%H%M%S}.xlsx"
         print(f"[ERRO] não consegui gravar {os.path.abspath(destino)} ({e}); salvando em {reserva}")
         try:
-            destino = salvar_xlsx(linhas, dia, reserva)
+            destino = salvar_xlsx(linhas, dia, reserva, periodo=periodo)
         except OSError as e2:
             print(f"[ERRO] também falhou: {e2}")
             return 1
