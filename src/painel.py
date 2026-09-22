@@ -6,13 +6,14 @@
 #   python painel.py          → sobe o painel em http://127.0.0.1:8765 e abre o navegador
 #   python painel.py 8800     → usa outra porta
 #
-# Os scripts exibidos vêm de ../input/scripts.txt, uma linha por script:
-#   Nome | caminho/do/script.py | argumentos (opcional) | pasta de output (opcional)
+# Os scripts exibidos vêm de ../input/scripts.xlsx. Cada aba do Excel vira uma aba
+# do painel, com o mesmo nome; em cada aba, uma linha por script com as colunas
+#   Nome | Caminho | Argumentos (opcional) | Output (opcional)
 #
 # Cada script roda com o mesmo Python que abriu o painel e com a pasta do próprio
 # script como diretório atual, então os caminhos relativos (../input, ../output)
 # continuam valendo. O painel só escuta em 127.0.0.1 e só executa scripts que
-# estão listados no arquivo.
+# estão listados no Excel.
 
 from __future__ import annotations
 from typing import Dict, List, Optional
@@ -25,17 +26,19 @@ import shlex
 import base64
 import hashlib
 import secrets
+import warnings
 import threading
 import subprocess
+import unicodedata
 import webbrowser
-from datetime import datetime
+from datetime import date, datetime
 from html import escape as _esc
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-INPUT_SCRIPTS = os.path.normpath(os.path.join(BASE_DIR, "..", "input", "scripts.txt"))
-LOGO_PATH     = os.path.normpath(os.path.join(BASE_DIR, "..", "input", "logo.png"))
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+INPUT_EXCEL = os.path.normpath(os.path.join(BASE_DIR, "..", "input", "scripts.xlsx"))
+LOGO_PATH   = os.path.normpath(os.path.join(BASE_DIR, "..", "input", "logo.png"))
 
 HOST         = "127.0.0.1"
 PORTA_PADRAO = 8765
@@ -65,18 +68,37 @@ def _fmt_dur(seg: float) -> str:
     return f"{m}m {s:02d}s" if m else f"{s}s"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LEITURA DA LISTA DE SCRIPTS — ../input/scripts.txt
+# LEITURA DA LISTA DE SCRIPTS — ../input/scripts.xlsx (cada aba do Excel = aba do painel)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _ler_texto(path: str) -> str:
-    # o Bloco de Notas pode salvar em UTF-8 ou ANSI
-    for enc in ("utf-8-sig", "cp1252", "latin-1"):
-        try:
-            with open(path, encoding=enc) as f:
-                return f.read()
-        except UnicodeDecodeError:
-            continue
-    return ""
+# cabeçalhos aceitos em cada coluna (comparados sem acento e em minúsculas)
+_COLUNAS = {
+    "nome"   : ("nome", "nome do script"),
+    "caminho": ("caminho", "caminho do script", "script", "arquivo", "path"),
+    "args"   : ("argumentos", "args", "parametros"),
+    "output" : ("output", "pasta de output", "pasta output", "saida", "pasta de saida"),
+}
+# sem linha de cabeçalho reconhecida: A = Nome, B = Caminho, C = Argumentos, D = Output
+_POS_PADRAO = {"nome": 0, "caminho": 1, "args": 2, "output": 3}
+
+
+class ErroLista(Exception):
+    pass
+
+
+def _norm(v: str) -> str:
+    s = unicodedata.normalize("NFKD", v).encode("ascii", "ignore").decode()
+    return " ".join(s.lower().split())
+
+
+def _celula(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, (datetime, date)):
+        return v.strftime("%d/%m/%Y")         # data digitada direto em Argumentos
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))                     # 1 e não 1.0
+    return str(v).strip()
 
 
 def _resolver(caminho: str) -> str:
@@ -84,41 +106,42 @@ def _resolver(caminho: str) -> str:
     return os.path.normpath(os.path.join(BASE_DIR, os.path.expandvars(caminho)))
 
 
-def ler_scripts() -> List[Dict]:
-    if not os.path.exists(INPUT_SCRIPTS):
-        return []
+def _scripts_da_aba(aba: str, linhas: List[List[str]], vistos: set) -> List[Dict]:
+    pos = _POS_PADRAO
+    for i, linha in enumerate(linhas[:10]):    # cabeçalho pode vir depois de um título
+        cab = [_norm(c) for c in linha]
+        achados = {campo: next((j for j, c in enumerate(cab) if c in nomes), None)
+                   for campo, nomes in _COLUNAS.items()}
+        if achados["caminho"] is not None:
+            pos, linhas = achados, linhas[i + 1:]
+            break
+
+    def col(linha: List[str], campo: str) -> str:
+        j = pos.get(campo)
+        return linha[j] if j is not None and j < len(linha) else ""
 
     scripts: List[Dict] = []
-    vistos: set = set()
-    for linha in _ler_texto(INPUT_SCRIPTS).splitlines():
-        linha = linha.strip()
-        if not linha or linha.startswith("#"):
-            continue
-
-        partes = [p.strip() for p in linha.split("|")]
-        if len(partes) == 1:
-            nome, caminho, args, output = "", partes[0], "", ""
-        else:
-            partes += [""] * (4 - len(partes))
-            nome, caminho, args, output = partes[:4]
-
+    for linha in linhas:
+        nome = col(linha, "nome")
+        args = col(linha, "args")
         # aspas só saem dos caminhos — nos argumentos elas agrupam palavras
-        caminho = caminho.strip('"').strip("'")
-        output  = output.strip('"').strip("'")
-        if not caminho:
-            continue
+        caminho = col(linha, "caminho").strip('"').strip("'")
+        output  = col(linha, "output").strip('"').strip("'")
+        if not caminho or nome.startswith("#") or caminho.startswith("#"):
+            continue                           # linha vazia ou desativada com #
         caminho = _resolver(caminho)
         output  = _resolver(output) if output else ""
         nome = nome or os.path.splitext(os.path.basename(caminho))[0]
 
-        # id estável entre recargas do arquivo (não depende da ordem das linhas)
-        sid = hashlib.sha1(f"{nome}|{caminho}".lower().encode("utf-8")).hexdigest()[:10]
+        # id estável entre recargas do Excel (não depende da ordem das linhas)
+        sid = hashlib.sha1(f"{aba}|{nome}|{caminho}".lower().encode("utf-8")).hexdigest()[:10]
         while sid in vistos:
             sid = hashlib.sha1(sid.encode()).hexdigest()[:10]
         vistos.add(sid)
 
         scripts.append({
             "id"     : sid,
+            "aba"    : aba,
             "nome"   : nome,
             "caminho": caminho,
             "args"   : args,
@@ -126,6 +149,35 @@ def ler_scripts() -> List[Dict]:
             "output" : output,
         })
     return scripts
+
+
+def ler_abas() -> List[Dict]:
+    """[{"nome": aba, "scripts": [...]}, ...] na ordem das abas visíveis do Excel."""
+    if not os.path.exists(INPUT_EXCEL):
+        return []
+    try:
+        import openpyxl
+    except ImportError:
+        raise ErroLista("O painel precisa do openpyxl para ler o Excel: pip install openpyxl")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")    # avisos de formatação/validação do openpyxl
+            wb = openpyxl.load_workbook(INPUT_EXCEL, data_only=True)
+    except Exception as e:
+        raise ErroLista(f"Não consegui ler {INPUT_EXCEL}: {e}")
+
+    abas: List[Dict] = []
+    vistos: set = set()
+    for ws in wb.worksheets:
+        if ws.sheet_state != "visible":
+            continue                           # aba oculta no Excel não aparece no painel
+        linhas = [[_celula(v) for v in row] for row in ws.iter_rows(values_only=True)]
+        abas.append({"nome": ws.title, "scripts": _scripts_da_aba(ws.title, linhas, vistos)})
+    return abas
+
+
+def ler_scripts() -> List[Dict]:
+    return [s for aba in ler_abas() for s in aba["scripts"]]
 
 
 def _split_args(args: str) -> List[str]:
@@ -250,7 +302,11 @@ def abrir_pasta(caminho: str) -> str:
     if not os.path.isdir(caminho):
         raise FileNotFoundError(f"Pasta de output não encontrada: {caminho}")
     if os.name == "nt":
-        os.startfile(caminho)
+        # explorer.exe em vez de os.startfile: o ShellExecute completa caminho sem extensão
+        # com .bat/.exe/.lnk — um "relatorios.bat" ao lado da pasta "relatorios" rodaria
+        # no lugar de abrir a pasta. Caminho absoluto do explorer para não pegar outro do PATH.
+        explorer = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "explorer.exe")
+        subprocess.Popen(f'"{explorer}" "{caminho}"')
     elif sys.platform == "darwin":
         subprocess.Popen(["open", caminho])
     else:
@@ -316,18 +372,31 @@ def gerar_html() -> str:
                     box-shadow: 0 3px 10px rgba(0,0,0,.09); }}
     .nav-main {{ background: {ITAU_DARK}; padding: 0 40px;
                  display: flex; align-items: center; gap: 0; }}
+    .abas {{ display: flex; min-width: 0; overflow-x: auto; scrollbar-width: thin; }}
     .main-btn {{ padding: 13px 28px; background: none; border: none;
                  border-bottom: 3px solid transparent;
                  color: {ITAU_GRAY2}; font-weight: 700; font-size: .88rem;
-                 letter-spacing: .06em; cursor: default; white-space: nowrap; }}
+                 letter-spacing: .06em; cursor: pointer; transition: all .18s;
+                 white-space: nowrap; }}
+    .main-btn:hover {{ color: #fff; }}
     .main-btn.active {{ color: #fff; border-bottom-color: {ITAU_ORANGE}; }}
-    .nav-info {{ margin-left: auto; display: flex; align-items: center; gap: 22px;
+    .tab-badge {{ display: inline-block; min-width: 18px; height: 18px; line-height: 18px;
+                  padding: 0 5px; margin-left: 7px; border-radius: 9px; background: {ITAU_ORANGE};
+                  color: #fff; font-size: .68rem; text-align: center; letter-spacing: 0;
+                  vertical-align: middle; }}
+    .tab-badge.erro {{ background: {ITAU_RED}; }}
+    .tab-badge:empty {{ display: none; }}
+    .nav-info {{ margin-left: auto; padding-left: 16px; flex-shrink: 0; display: flex;
+                 align-items: center; gap: 22px;
                  font-size: .76rem; font-weight: 700; letter-spacing: .06em; }}
     .nav-info .rodando {{ color: {ITAU_ORANGE}; }}
     .conn.on  {{ color: #7ee2a0; }}
     .conn.off {{ color: #ff8a80; }}
 
     .content {{ padding: 28px 40px 50px; }}
+    .pane {{ display: none; animation: fadeIn .2s; }}
+    .pane.active {{ display: block; }}
+    @keyframes fadeIn {{ from {{ opacity:0; transform:translateY(4px); }} to {{ opacity:1; transform:none; }} }}
 
     .toolbar {{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }}
     .aba-title {{ font-size: 1rem; font-weight: 700; color: {ITAU_ORANGE};
@@ -441,11 +510,23 @@ def gerar_html() -> str:
                          erro: 'ERRO', interrompido: 'INTERROMPIDO', ausente: 'NÃO ENCONTRADO' };
     const ATIVO = st => st === 'rodando' || st === 'parando';
 
-    let SCRIPTS  = [];
+    let ABAS     = [];                       // [{nome, scripts}] — uma por aba do Excel
+    let SCRIPTS  = [];                       // scripts de todas as abas
+    let ABA      = -1;                       // índice da aba ativa
     let JOBS     = {};
     let SEL      = null;                     // script cujo log aparece no console
     let LOG      = { exec: null, desde: 0 };
     let ocupado  = false, pendente = false;
+    const SEL_ABA = {};                      // nome da aba → último script escolhido nela
+
+    const THEAD = `<thead><tr>
+      <th>SCRIPT</th><th>CAMINHO</th><th>ARGUMENTOS</th><th>STATUS</th>
+      <th>INÍCIO</th><th>DURAÇÃO</th><th></th>
+    </tr></thead>`;
+    const FORMATO = 'colunas <code>Nome | Caminho | Argumentos | Output</code> (Argumentos e Output opcionais)';
+
+    function lerPref(k)     { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function gravarPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -480,12 +561,8 @@ def gerar_html() -> str:
       return d;
     }
 
-    async function carregar() {
-      let d;
-      try { d = await api('/api/scripts'); }
-      catch (e) { toast('Não foi possível ler a lista: ' + e.message, true); return; }
-      SCRIPTS = d.scripts;
-      $('#tbody').innerHTML = SCRIPTS.map(s => `
+    function linhaHtml(s) {
+      return `
         <tr id="row-${s.id}" onclick="selecionar('${s.id}')">
           <td>${esc(s.nome)}</td>
           <td class="c-path" title="${esc(s.caminho)}">${esc(s.caminho)}</td>
@@ -496,18 +573,59 @@ def gerar_html() -> str:
           <td class="c-inicio"></td>
           <td class="c-dur"></td>
           <td class="c-acao"></td>
-        </tr>`).join('');
-      $('#qtd').textContent = SCRIPTS.length;
-      $('#vazio').style.display = SCRIPTS.length ? 'none' : '';
-      $('#tbl').style.display   = SCRIPTS.length ? '' : 'none';
+        </tr>`;
+    }
+
+    async function carregar() {
+      let d;
+      try { d = await api('/api/scripts'); }
+      catch (e) { toast('Não foi possível ler a lista: ' + e.message, true); return; }
+      const abaAntes = ABAS[ABA]?.nome ?? lerPref('painel.aba');
+      ABAS    = d.abas;
+      SCRIPTS = ABAS.flatMap(a => a.scripts);
+
+      // uma aba no menu e uma tabela para cada aba do Excel
+      $('#abas').innerHTML = ABAS.map((a, i) =>
+        `<button class="main-btn" data-i="${i}" onclick="trocarAba(${i})">${esc(a.nome)}` +
+        `<span class="tab-badge" id="badge-${i}"></span></button>`).join('');
+      $('#panes').innerHTML = ABAS.map((a, i) => `<div class="pane" id="pane-${i}">` + (a.scripts.length
+        ? `<div class="tbl-wrap"><table class="exp-table">${THEAD}<tbody>${a.scripts.map(linhaHtml).join('')}</tbody></table></div>`
+        : `<div class="vazio">Nenhum script na aba <strong>${esc(a.nome)}</strong>.<br>
+             Preencha as ${FORMATO} nessa aba do Excel e clique em <strong>Recarregar lista</strong>.</div>`
+      ) + '</div>').join('');
+
+      // Excel ausente, ilegível ou sem abas visíveis
+      const vazio = $('#vazio');
+      vazio.style.display = ABAS.length && !d.erro ? 'none' : '';
+      vazio.innerHTML = d.erro
+        ? `<strong>Erro ao ler o Excel:</strong> ${esc(d.erro)}<br>
+           Se ele estiver sendo salvo, espere e clique em <strong>Recarregar lista</strong>.`
+        : !d.existe
+        ? `Arquivo não encontrado: <code>${esc(d.arquivo)}</code>.<br>
+           Crie o Excel com uma aba para cada grupo de scripts e as ${FORMATO}.`
+        : `Nenhuma aba visível em <code>${esc(d.arquivo)}</code>.`;
+
       filtrar($('#busca').value);
-      renderStatus();
-      selecionar(SCRIPTS.some(s => s.id === SEL) ? SEL : (SCRIPTS[0]?.id ?? null));
+      const i = ABAS.findIndex(a => a.nome === abaAntes);
+      trocarAba(i >= 0 ? i : 0);
+    }
+
+    function trocarAba(i) {
+      const a = ABAS[i];
+      ABA = a ? i : -1;
+      document.querySelectorAll('#abas .main-btn').forEach(b => b.classList.toggle('active', +b.dataset.i === i));
+      document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + i));
+      $('#aba-nome').textContent = a ? a.nome : 'Scripts';
+      $('#qtd').textContent      = a ? a.scripts.length : 0;
+      if (a) gravarPref('painel.aba', a.nome);
+      // o console acompanha a aba: volta ao último script escolhido nela (ou ao primeiro)
+      const ids = a ? a.scripts.map(s => s.id) : [];
+      selecionar(ids.includes(SEL_ABA[a?.nome]) ? SEL_ABA[a.nome] : (ids[0] ?? null));
     }
 
     function filtrar(q) {
       q = q.toLowerCase();
-      document.querySelectorAll('#tbody tr').forEach(r => {
+      document.querySelectorAll('.pane tbody tr').forEach(r => {
         r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
       });
     }
@@ -518,13 +636,14 @@ def gerar_html() -> str:
         LOG = { exec: null, desde: 0 };
         $('#log').textContent = '';
       }
-      document.querySelectorAll('#tbody tr').forEach(r => r.classList.toggle('sel', r.id === 'row-' + id));
+      document.querySelectorAll('.pane tbody tr').forEach(r => r.classList.toggle('sel', r.id === 'row-' + id));
       const s = SCRIPTS.find(x => x.id === id);
+      if (s) SEL_ABA[s.aba] = id;
       $('#console-nome').textContent = s ? s.nome : '—';
       const bo = $('#btn-output');
       bo.disabled = !(s && s.output);
       bo.title = s && s.output ? 'Abrir ' + s.output
-                               : 'Sem pasta de output — cadastre na 4ª coluna do scripts.txt';
+                               : 'Sem pasta de output — preencha a coluna Output no Excel';
       renderStatus();
       refresh();
     }
@@ -552,6 +671,18 @@ def gerar_html() -> str:
                        onclick="event.stopPropagation(); rodar('${s.id}')">▶ RODAR</button>`;
         }
       }
+
+      // indicador em cada aba: laranja = rodando agora, vermelho = terminou com erro
+      ABAS.forEach((a, i) => {
+        const b = document.getElementById('badge-' + i);
+        if (!b) return;
+        const sts  = a.scripts.map(s => JOBS[s.id]?.status);
+        const rod  = sts.filter(ATIVO).length;
+        const erro = sts.filter(st => st === 'erro').length;
+        b.textContent = rod || erro || '';
+        b.className   = 'tab-badge' + (!rod && erro ? ' erro' : '');
+        b.title       = rod ? `${rod} rodando` : (erro ? `${erro} com erro` : '');
+      });
 
       const j = SEL && JOBS[SEL];
       $('#console-status').innerHTML = j ? `<span class="st st-${j.status}">${STATUS_TXT[j.status]}</span>` : '';
@@ -657,13 +788,14 @@ def gerar_html() -> str:
     carregar().then(loop);
     """
 
-    arq = _esc(INPUT_SCRIPTS)
+    arq = _esc(INPUT_EXCEL)
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel de Execução</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23000D3C'/%3E%3Cpath d='M12 9l11 7-11 7z' fill='%23EC7000'/%3E%3C/svg%3E">
   <style>{css}</style>
 </head>
 <body>
@@ -680,7 +812,7 @@ def gerar_html() -> str:
 
 <div class="nav-wrapper">
   <nav class="nav-main">
-    <button class="main-btn active">SCRIPTS PYTHON</button>
+    <div class="abas" id="abas"></div>
     <span class="nav-info">
       <span id="rodando" class="rodando"></span>
       <span id="conn" class="conn on">● CONECTADO</span>
@@ -690,27 +822,13 @@ def gerar_html() -> str:
 
 <div class="content">
   <div class="toolbar">
-    <div class="aba-title">Scripts<span class="qtd" id="qtd">0</span></div>
+    <div class="aba-title"><span id="aba-nome">Scripts</span><span class="qtd" id="qtd">0</span></div>
     <input id="busca" class="search-box" placeholder="Filtrar por nome ou caminho..." oninput="filtrar(this.value)">
-    <button class="nav-btn" onclick="carregar()" title="Lê o scripts.txt de novo">&#8635; Recarregar lista</button>
+    <button class="nav-btn" onclick="carregar()" title="Lê o Excel de novo (salve-o antes)">&#8635; Recarregar lista</button>
   </div>
 
-  <div id="vazio" class="vazio" style="display:none">
-    Nenhum script encontrado em <code>{arq}</code>.<br>
-    Crie o arquivo com uma linha por script, no formato
-    <code>Nome | C:\\caminho\\do\\script.py | argumentos | C:\\pasta\\de\\output</code>,
-    e clique em <strong>Recarregar lista</strong>.
-  </div>
-
-  <div class="tbl-wrap" id="tbl">
-    <table class="exp-table">
-      <thead><tr>
-        <th>SCRIPT</th><th>CAMINHO</th><th>ARGUMENTOS</th><th>STATUS</th>
-        <th>INÍCIO</th><th>DURAÇÃO</th><th></th>
-      </tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
+  <div id="vazio" class="vazio" style="display:none"></div>
+  <div id="panes"></div>
 
   <div class="console">
     <div class="console-hdr">
@@ -727,7 +845,7 @@ def gerar_html() -> str:
 </div>
 
 <div class="footer">
-  Formato do scripts.txt: &nbsp;<code>Nome | caminho do script.py | argumentos | pasta de output</code> &nbsp;|&nbsp;
+  Cada aba do Excel é uma aba do painel, com as colunas &nbsp;<code>Nome | Caminho | Argumentos | Output</code> &nbsp;|&nbsp;
   Cada script roda na própria pasta &nbsp;|&nbsp; Python: {_esc(sys.executable)}
 </div>
 
@@ -779,7 +897,12 @@ class _Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.html"):
             self._responder(gerar_html().encode("utf-8"), "text/html; charset=utf-8")
         elif url.path == "/api/scripts":
-            self._json({"scripts": ler_scripts(), "arquivo": INPUT_SCRIPTS})
+            resp = {"arquivo": INPUT_EXCEL, "existe": os.path.exists(INPUT_EXCEL), "abas": []}
+            try:
+                resp["abas"] = ler_abas()
+            except ErroLista as e:
+                resp["erro"] = str(e)
+            self._json(resp)
         elif url.path == "/api/status":
             self._json({"jobs": status_jobs()})
         elif url.path == "/api/log":
@@ -803,11 +926,20 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         sid  = str(corpo.get("id", ""))
 
-        if path == "/api/rodar":
-            # só roda o que está no scripts.txt — o navegador manda o id, nunca o caminho
+        if path == "/api/parar":
+            return self._json({"ok": parar(sid)})
+        if path not in ("/api/rodar", "/api/output"):
+            return self._json({"erro": "Não encontrado."}, 404)
+
+        # só age sobre o que está no Excel — o navegador manda o id, nunca o caminho
+        try:
             script = next((s for s in ler_scripts() if s["id"] == sid), None)
-            if script is None:
-                return self._json({"erro": "Script não está mais na lista — clique em Recarregar lista."}, 404)
+        except ErroLista as e:
+            return self._json({"erro": str(e)}, 503)
+        if script is None:
+            return self._json({"erro": "Script não está mais no Excel — clique em Recarregar lista."}, 404)
+
+        if path == "/api/rodar":
             if not script["existe"]:
                 return self._json({"erro": f"Arquivo não encontrado: {script['caminho']}"}, 400)
             try:
@@ -816,23 +948,14 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json({"erro": str(e)}, 409)
             return self._json({"ok": True, "exec": job["exec"]})
 
-        if path == "/api/parar":
-            return self._json({"ok": parar(sid)})
-
-        if path == "/api/output":
-            # abre só a pasta cadastrada no scripts.txt — o navegador manda o id, nunca o caminho
-            script = next((s for s in ler_scripts() if s["id"] == sid), None)
-            if script is None:
-                return self._json({"erro": "Script não está mais na lista — clique em Recarregar lista."}, 404)
-            if not script["output"]:
-                return self._json({"erro": f"{script['nome']} não tem pasta de output no scripts.txt."}, 400)
-            try:
-                pasta = abrir_pasta(script["output"])
-            except OSError as e:
-                return self._json({"erro": str(e)}, 404)
-            return self._json({"ok": True, "pasta": pasta})
-
-        self._json({"erro": "Não encontrado."}, 404)
+        # /api/output
+        if not script["output"]:
+            return self._json({"erro": f"{script['nome']} não tem pasta na coluna Output do Excel."}, 400)
+        try:
+            pasta = abrir_pasta(script["output"])
+        except OSError as e:
+            return self._json({"erro": str(e)}, 404)
+        self._json({"ok": True, "pasta": pasta})
 
 
 class _Servidor(ThreadingHTTPServer):
@@ -868,12 +991,12 @@ def main():
     print(f"\n{'='*62}")
     print(f"  PAINEL DE EXECUÇÃO")
     print(f"  Endereço  : {url}")
-    print(f"  Scripts   : {INPUT_SCRIPTS}")
+    print(f"  Scripts   : {INPUT_EXCEL}")
     print(f"  Python    : {sys.executable}")
     print(f"  Ctrl+C para encerrar")
     print(f"{'='*62}\n")
-    if not os.path.exists(INPUT_SCRIPTS):
-        print(f"  [AVISO] {INPUT_SCRIPTS} não encontrado — o painel abre vazio.\n")
+    if not os.path.exists(INPUT_EXCEL):
+        print(f"  [AVISO] {INPUT_EXCEL} não encontrado — o painel abre vazio.\n")
 
     threading.Timer(0.8, webbrowser.open, args=(url,)).start()
     try:
