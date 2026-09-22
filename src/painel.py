@@ -7,7 +7,7 @@
 #   python painel.py 8800     → usa outra porta
 #
 # Os scripts exibidos vêm de ../input/scripts.txt, uma linha por script:
-#   Nome | caminho/do/script.py | argumentos (opcional)
+#   Nome | caminho/do/script.py | argumentos (opcional) | pasta de output (opcional)
 #
 # Cada script roda com o mesmo Python que abriu o painel e com a pasta do próprio
 # script como diretório atual, então os caminhos relativos (../input, ../output)
@@ -79,6 +79,11 @@ def _ler_texto(path: str) -> str:
     return ""
 
 
+def _resolver(caminho: str) -> str:
+    # relativo → a partir da pasta do painel (src/); absoluto fica como está
+    return os.path.normpath(os.path.join(BASE_DIR, os.path.expandvars(caminho)))
+
+
 def ler_scripts() -> List[Dict]:
     if not os.path.exists(INPUT_SCRIPTS):
         return []
@@ -92,16 +97,18 @@ def ler_scripts() -> List[Dict]:
 
         partes = [p.strip() for p in linha.split("|")]
         if len(partes) == 1:
-            nome, caminho, args = "", partes[0], ""
+            nome, caminho, args, output = "", partes[0], "", ""
         else:
-            nome, caminho = partes[0], partes[1]
-            args = partes[2] if len(partes) > 2 else ""
+            partes += [""] * (4 - len(partes))
+            nome, caminho, args, output = partes[:4]
 
+        # aspas só saem dos caminhos — nos argumentos elas agrupam palavras
         caminho = caminho.strip('"').strip("'")
+        output  = output.strip('"').strip("'")
         if not caminho:
             continue
-        # relativo → a partir da pasta do painel (src/); absoluto fica como está
-        caminho = os.path.normpath(os.path.join(BASE_DIR, os.path.expandvars(caminho)))
+        caminho = _resolver(caminho)
+        output  = _resolver(output) if output else ""
         nome = nome or os.path.splitext(os.path.basename(caminho))[0]
 
         # id estável entre recargas do arquivo (não depende da ordem das linhas)
@@ -116,6 +123,7 @@ def ler_scripts() -> List[Dict]:
             "caminho": caminho,
             "args"   : args,
             "existe" : os.path.isfile(caminho),
+            "output" : output,
         })
     return scripts
 
@@ -233,6 +241,21 @@ def parar_todos() -> None:
         print(f"  Interrompendo {len(ativos)} script(s) em execução...")
     for j in ativos:
         _matar(j["proc"])
+
+
+def abrir_pasta(caminho: str) -> str:
+    # cadastraram um arquivo → abre a pasta dele (nunca executa o arquivo)
+    if os.path.isfile(caminho):
+        caminho = os.path.dirname(caminho)
+    if not os.path.isdir(caminho):
+        raise FileNotFoundError(f"Pasta de output não encontrada: {caminho}")
+    if os.name == "nt":
+        os.startfile(caminho)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", caminho])
+    else:
+        subprocess.Popen(["xdg-open", caminho])
+    return caminho
 
 
 def status_jobs() -> Dict[str, dict]:
@@ -376,14 +399,15 @@ def gerar_html() -> str:
                     align-items: center; gap: 12px; border-bottom: 3px solid {ITAU_ORANGE}; }}
     .console-hdr .ttl {{ font-weight: 700; letter-spacing: .08em; font-size: .85rem; }}
     .console-hdr .nome {{ color: {ITAU_ORANGE}; font-weight: 700; font-size: .85rem; }}
-    .console-hdr .acoes {{ margin-left: auto; }}
+    .console-hdr .acoes {{ margin-left: auto; display: flex; gap: 8px; }}
     .console-hdr .st-ok   {{ background: #7ee2a022; color: #7ee2a0; }}
     .console-hdr .st-erro {{ background: #ff8a8022; color: #ff8a80; }}
     .console-hdr .st-interrompido {{ background: #ffffff18; color: #ff8a80; }}
     .btn-ghost {{ padding: 5px 14px; border: 1.5px solid rgba(255,255,255,.35); border-radius: 14px;
                   background: none; color: #fff; font-size: .76rem; font-weight: 600; cursor: pointer;
                   transition: all .15s; }}
-    .btn-ghost:hover {{ border-color: {ITAU_ORANGE}; color: {ITAU_ORANGE}; }}
+    .btn-ghost:hover:not(:disabled) {{ border-color: {ITAU_ORANGE}; color: {ITAU_ORANGE}; }}
+    .btn-ghost:disabled {{ opacity: .35; cursor: not-allowed; }}
     .console pre {{ background: #0a1230; color: #dfe6f5; font-family: Consolas, 'Cascadia Mono', monospace;
                     font-size: .8rem; line-height: 1.55; padding: 16px 18px; height: 440px; overflow: auto;
                     white-space: pre-wrap; word-break: break-word; }}
@@ -497,6 +521,10 @@ def gerar_html() -> str:
       document.querySelectorAll('#tbody tr').forEach(r => r.classList.toggle('sel', r.id === 'row-' + id));
       const s = SCRIPTS.find(x => x.id === id);
       $('#console-nome').textContent = s ? s.nome : '—';
+      const bo = $('#btn-output');
+      bo.disabled = !(s && s.output);
+      bo.title = s && s.output ? 'Abrir ' + s.output
+                               : 'Sem pasta de output — cadastre na 4ª coluna do scripts.txt';
       renderStatus();
       refresh();
     }
@@ -615,6 +643,12 @@ def gerar_html() -> str:
       refresh();
     }
 
+    async function abrirOutput() {
+      if (!SEL) return;
+      try { toast('Abrindo ' + (await api('/api/output', { id: SEL })).pasta); }
+      catch (e) { toast(e.message, true); }
+    }
+
     function copiarLog() {
       navigator.clipboard.writeText($('#log').textContent)
         .then(() => toast('Saída copiada.'), () => toast('Não foi possível copiar.', true));
@@ -664,7 +698,8 @@ def gerar_html() -> str:
   <div id="vazio" class="vazio" style="display:none">
     Nenhum script encontrado em <code>{arq}</code>.<br>
     Crie o arquivo com uma linha por script, no formato
-    <code>Nome | C:\\caminho\\do\\script.py | argumentos</code>, e clique em <strong>Recarregar lista</strong>.
+    <code>Nome | C:\\caminho\\do\\script.py | argumentos | C:\\pasta\\de\\output</code>,
+    e clique em <strong>Recarregar lista</strong>.
   </div>
 
   <div class="tbl-wrap" id="tbl">
@@ -682,14 +717,17 @@ def gerar_html() -> str:
       <span class="ttl">SAÍDA</span>
       <span class="nome" id="console-nome">—</span>
       <span id="console-status"></span>
-      <div class="acoes"><button class="btn-ghost" onclick="copiarLog()">Copiar</button></div>
+      <div class="acoes">
+        <button class="btn-ghost" id="btn-output" onclick="abrirOutput()" disabled>&#128194; Output</button>
+        <button class="btn-ghost" onclick="copiarLog()">Copiar</button>
+      </div>
     </div>
     <pre id="log"></pre>
   </div>
 </div>
 
 <div class="footer">
-  Formato do scripts.txt: &nbsp;<code>Nome | caminho do script.py | argumentos</code> &nbsp;|&nbsp;
+  Formato do scripts.txt: &nbsp;<code>Nome | caminho do script.py | argumentos | pasta de output</code> &nbsp;|&nbsp;
   Cada script roda na própria pasta &nbsp;|&nbsp; Python: {_esc(sys.executable)}
 </div>
 
@@ -780,6 +818,19 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/parar":
             return self._json({"ok": parar(sid)})
+
+        if path == "/api/output":
+            # abre só a pasta cadastrada no scripts.txt — o navegador manda o id, nunca o caminho
+            script = next((s for s in ler_scripts() if s["id"] == sid), None)
+            if script is None:
+                return self._json({"erro": "Script não está mais na lista — clique em Recarregar lista."}, 404)
+            if not script["output"]:
+                return self._json({"erro": f"{script['nome']} não tem pasta de output no scripts.txt."}, 400)
+            try:
+                pasta = abrir_pasta(script["output"])
+            except OSError as e:
+                return self._json({"erro": str(e)}, 404)
+            return self._json({"ok": True, "pasta": pasta})
 
         self._json({"erro": "Não encontrado."}, 404)
 

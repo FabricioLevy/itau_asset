@@ -3,16 +3,20 @@
 # ═══════════════════════════════════════════════════════════════════════════
 # Uma linha por script:
 #
-#     Nome | caminho do script.py | argumentos (opcional)
+#     Nome | caminho do script.py | argumentos | pasta de output
 #
+# - Argumentos e pasta de output são opcionais. Sem argumentos mas com
+#   output, deixe a coluna vazia:   Nome | script.py |  | C:\pasta\output
 # - Linhas que começam com # são ignoradas.
-# - O caminho pode ser absoluto (C:\...\script.py) ou relativo à pasta src/.
+# - Caminhos (script e output) podem ser absolutos (C:\...) ou relativos
+#   à pasta src/.
 # - Só o caminho também funciona: o nome vira o nome do arquivo.
 # - Cada script roda com a própria pasta como diretório atual, então os
 #   caminhos relativos dentro dele (../input, ../output) continuam valendo.
 # - Os argumentos podem ser alterados no painel antes de clicar em RODAR.
+# - O botão "Output" do painel abre a pasta de output no Explorer.
 # - Depois de editar este arquivo, clique em "Recarregar lista" no painel.
 # ═══════════════════════════════════════════════════════════════════════════
 
-Relatório de Exposição | exposicao_html.py | 1
-Captação               | ../captacao/src/captacao.py
+Relatório de Exposição | exposicao_html.py           | 1 | ../output/relatorios
+Captação               | ../captacao/src/captacao.py |   | ../captacao/output/captacao
