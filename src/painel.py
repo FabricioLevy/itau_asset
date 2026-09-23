@@ -180,12 +180,24 @@ def ler_scripts() -> List[Dict]:
     return [s for aba in ler_abas() for s in aba["scripts"]]
 
 
+# valores de erro do Excel — ex.: "--sem-cvm" digitado numa célula Geral vira a fórmula
+# "=--sem-cvm" e o Excel grava "#NAME?", que não pode chegar ao script como argumento
+_ERROS_EXCEL = {"#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A",
+                "#SPILL!", "#CALC!", "#GETTING_DATA"}
+
+
 def _split_args(args: str) -> List[str]:
     # posix=False preserva as barras invertidas dos caminhos do Windows
     try:
         partes = shlex.split(args, posix=False)
     except ValueError:
         raise ValueError("Argumentos inválidos: aspas sem fechamento.")
+    erro = next((a for a in partes if a.upper() in _ERROS_EXCEL), None)
+    if erro:
+        raise ValueError(f"Os argumentos vieram do Excel com erro ({erro}): argumento que começa "
+                         f"com - ou + vira fórmula. No Excel, digite um apóstrofo antes "
+                         f"('--sem-cvm) ou deixe a coluna Argumentos como Texto; ou corrija "
+                         f"direto no campo do painel.")
     return [a[1:-1] if len(a) >= 2 and a[0] == a[-1] and a[0] in "\"'" else a
             for a in partes]
 
@@ -240,10 +252,19 @@ def iniciar(script: Dict, args: str) -> dict:
         atual = _JOBS.get(script["id"])
         if atual and atual["status"] in ("rodando", "parando"):
             raise RuntimeError(f"{script['nome']} já está rodando.")
+        # o mesmo .py não roda duas vezes ao mesmo tempo (gravariam no mesmo output) —
+        # vale também quando a linha mudou de aba/nome e ganhou outro id
+        outro = next((j for j in _JOBS.values() if j["status"] in ("rodando", "parando")
+                      and os.path.normcase(j["caminho"]) == os.path.normcase(caminho)), None)
+        if outro:
+            raise RuntimeError(f"{os.path.basename(caminho)} já está rodando como "
+                               f"\"{outro['nome']}\" (aba {outro['aba']}). Pare essa execução antes.")
         _EXEC_SEQ += 1
         job = {
             "exec"  : _EXEC_SEQ,
             "nome"  : script["nome"],
+            "aba"   : script["aba"],
+            "caminho": caminho,
             "status": "rodando",
             "inicio": time.time(),
             "fim"   : None,
@@ -320,6 +341,8 @@ def status_jobs() -> Dict[str, dict]:
         return {
             sid: {
                 "exec"   : j["exec"],
+                "nome"   : j["nome"],
+                "aba"    : j["aba"],
                 "status" : j["status"],
                 "codigo" : j["codigo"],
                 "inicio" : datetime.fromtimestamp(j["inicio"]).strftime("%d/%m %H:%M:%S"),
@@ -435,6 +458,14 @@ def gerar_html() -> str:
                   border-radius: 6px; font-family: Consolas, 'Cascadia Mono', monospace; font-size: .8rem;
                   outline: none; background: #fff; transition: border .2s; }}
     .arg-input:focus {{ border-color: {ITAU_ORANGE}; box-shadow: 0 0 0 3px {ITAU_ORANGE}22; }}
+    .arg-input.arg-erro {{ border-color: {ITAU_RED}; background: #fde8e8; color: {ITAU_RED}; }}
+
+    .orfaos {{ margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }}
+    .orfao {{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff;
+              border-left: 4px solid {ITAU_ORANGE}; border-radius: 8px; padding: 10px 16px;
+              box-shadow: 0 2px 10px rgba(0,0,0,.08); font-size: .85rem; }}
+    .orfao .info {{ color: #666; font-size: .8rem; }}
+    .orfao .acoes {{ margin-left: auto; display: flex; gap: 8px; }}
 
     .st {{ display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 12px;
            font-size: .74rem; font-weight: 700; letter-spacing: .05em; white-space: nowrap; }}
@@ -561,13 +592,23 @@ def gerar_html() -> str:
       return d;
     }
 
+    // erro de célula do Excel (ex.: --sem-cvm numa célula Geral vira =--sem-cvm → #NAME?)
+    const ERRO_EXCEL = /#(NAME\?|REF!|VALUE!|N\/A|DIV\/0!|NUM!|NULL!|SPILL!|CALC!)/i;
+
+    function marcarArg(inp) {
+      const erro = ERRO_EXCEL.test(inp.value);
+      inp.classList.toggle('arg-erro', erro);
+      inp.title = erro ? "Erro vindo do Excel: argumento que começa com - ou + vira fórmula. "
+                       + "No Excel, digite um apóstrofo antes ('--sem-cvm) — ou corrija aqui." : '';
+    }
+
     function linhaHtml(s) {
       return `
         <tr id="row-${s.id}" onclick="selecionar('${s.id}')">
           <td>${esc(s.nome)}</td>
           <td class="c-path" title="${esc(s.caminho)}">${esc(s.caminho)}</td>
           <td><input class="arg-input" id="args-${s.id}" value="${esc(s.args)}" placeholder="sem argumentos"
-                     onclick="event.stopPropagation()"
+                     onclick="event.stopPropagation()" oninput="marcarArg(this)"
                      onkeydown="if (event.key === 'Enter') rodar('${s.id}')"></td>
           <td class="c-status"></td>
           <td class="c-inicio"></td>
@@ -593,6 +634,7 @@ def gerar_html() -> str:
         : `<div class="vazio">Nenhum script na aba <strong>${esc(a.nome)}</strong>.<br>
              Preencha as ${FORMATO} nessa aba do Excel e clique em <strong>Recarregar lista</strong>.</div>`
       ) + '</div>').join('');
+      document.querySelectorAll('.arg-input').forEach(marcarArg);
 
       // Excel ausente, ilegível ou sem abas visíveis
       const vazio = $('#vazio');
@@ -639,7 +681,8 @@ def gerar_html() -> str:
       document.querySelectorAll('.pane tbody tr').forEach(r => r.classList.toggle('sel', r.id === 'row-' + id));
       const s = SCRIPTS.find(x => x.id === id);
       if (s) SEL_ABA[s.aba] = id;
-      $('#console-nome').textContent = s ? s.nome : '—';
+      // execução que saiu do Excel (aba renomeada etc.) ainda mostra o nome no console
+      $('#console-nome').textContent = s ? s.nome : (JOBS[id]?.nome ?? '—');
       const bo = $('#btn-output');
       bo.disabled = !(s && s.output);
       bo.title = s && s.output ? 'Abrir ' + s.output
@@ -670,6 +713,28 @@ def gerar_html() -> str:
             : `<button class="run-btn" ${s.existe ? '' : 'disabled'}
                        onclick="event.stopPropagation(); rodar('${s.id}')">▶ RODAR</button>`;
         }
+      }
+
+      // execuções que não batem com nenhuma linha do Excel (aba/nome renomeados, linha
+      // movida, Excel ilegível): continuam visíveis para ver a saída e poder parar
+      const ids = new Set(SCRIPTS.map(s => s.id));
+      const orf = Object.entries(JOBS).filter(([id, x]) => ATIVO(x.status) && !ids.has(id));
+      const box = $('#orfaos');
+      const chave = orf.map(([id, x]) => id + x.status).join();
+      if (box.dataset.chave !== chave) {        // só redesenha quando muda (não perde cliques)
+        box.dataset.chave = chave;
+        box.style.display = orf.length ? '' : 'none';
+        box.innerHTML = orf.map(([id, x]) => `
+          <div class="orfao">
+            <span class="st st-${x.status}">${STATUS_TXT[x.status]}</span>
+            <strong>${esc(x.nome)}</strong>
+            <span class="info">aba ${esc(x.aba)} · não aparece mais no Excel com esse nome/aba</span>
+            <span class="acoes">
+              <button class="nav-btn" onclick="selecionar('${id}')">Ver saída</button>
+              <button class="run-btn stop" ${x.status === 'parando' ? 'disabled' : ''}
+                      onclick="parar('${id}')">■ PARAR</button>
+            </span>
+          </div>`).join('');
       }
 
       // indicador em cada aba: laranja = rodando agora, vermelho = terminou com erro
@@ -827,6 +892,7 @@ def gerar_html() -> str:
     <button class="nav-btn" onclick="carregar()" title="Lê o Excel de novo (salve-o antes)">&#8635; Recarregar lista</button>
   </div>
 
+  <div id="orfaos" class="orfaos" style="display:none"></div>
   <div id="vazio" class="vazio" style="display:none"></div>
   <div id="panes"></div>
 
