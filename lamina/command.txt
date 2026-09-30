@@ -1,0 +1,9 @@
+python __main__.py diario                                  # rotina completa, como antes
+python __main__.py sensibilidade IFRA11 IFRI11             # consolidador_infos
+python __main__.py sensibilidade ICRI11 --data D-2
+python __main__.py sensibilidade RURA11 --data D-4         # a linha do AGRO que estava comentada
+python __main__.py saida isentos fip                       # consolidador_infos_isen_dif
+python __main__.py saida ITAUBAFIPSEN4_6_7 --data 2026-09-28
+python __main__.py json                                    # union_all_json
+python __main__.py historico                               # compara_historico
+python __main__.py --help                                  # lista comandos, fundos e atalhos
