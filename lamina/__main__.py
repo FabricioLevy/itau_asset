@@ -1,5 +1,4 @@
 # Esse script vai montar o ATT
-import argparse
 from datetime import date, datetime, timedelta
 import urllib
 import pandas as pd
@@ -54,11 +53,6 @@ LISTA_FUNDOS_ISENTOS = ['ITISENTOMAR29', 'ITISENTOSET28', 'ITISENTOSET29',
 # Fundos com a mesma data e cota inicial têm a mesma tabela, então saem juntos num PDF só
 LISTA_FUNDOS_ITAUBA_FIP = ['ITAUBAFIPSEN1_3', 'ITAUBAFIPSEN2', 'ITAUBAFIPSEN4_6_7',
                            'ITAUBAFIPSEN5', 'ITAUBAFIPSEN8_9']
-
-# fundos da comparação de histórico (fim da rotina diária e padrão do comando historico)
-LISTA_FUNDOS_HISTORICO = ['ITAUFICFIDCINF', 'ITAUINFCDIRF', 'INTITAUCRIFII', 'ITISENTOSET28',
-                          'ITISENTOMAR29', 'ITISENTOSET29', 'INTITAUFIIAGRO', 'ITISENTOMAR28',
-                          'ITISENTOMAR30']
 
 # [FIX] caminho da planilha compartilhada de yields dos ITAUBAs
 PATH_ITAUBAS_YIELD = r"\\fswcorp\ceic\WMS\DCIGI\SISTEMAS\GRUP\PESQUANT\_Publico\ITAUBA\ITAUBAs_yield.xlsx"
@@ -730,23 +724,25 @@ def consolidador_infos(date_ref=None, lista_fundos=[], file_name=None, path=None
 
 
 def consolidador_infos_isen_dif(date_ref=None, lista_fundos=[], file_name=None, path=None):
+    """Gera o PDF da tabela de saída de cada fundo. Devolve os fundos pulados por falta da aba PDF_ no modelo."""
 
-    dict_nome_pdf = {'ISEN11': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ISEN11',
-                     'ISET11': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ISET11',
-                     'ISTT11': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ISTT11',
-                     'ISNT11': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ISNT11',
-                     'ISNN11': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ISNN11',
-                     'ITAUBAFIPSEN1_3': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ITAUBAFIPSEN1_3',
-                     'ITAUBAFIPSEN2': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ITAUBAFIPSEN2',
-                     'ITAUBAFIPSEN4_6_7': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ITAUBAFIPSEN4_6_7',
-                     'ITAUBAFIPSEN5': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ITAUBAFIPSEN5',
-                     'ITAUBAFIPSEN8_9': 'Tabela de Sensibilidade Indicativa do Mercado Secundario-ITAUBAFIPSEN8_9'}
+    # abas do modelo, para conferir antes de calcular (o Excel não diferencia maiúsculas no nome da aba)
+    book = load_workbook(file_name, read_only=True)
+    abas = {aba.lower() for aba in book.sheetnames}
+    book.close()
 
+    sem_aba = []
     for fundo in lista_fundos:
         # [FIX] variavel local, mesmo motivo do consolidador_infos
         data_fundo = date_ref if date_ref is not None else str(QsDate(date.today()).add_business_days(-1))
 
         if fundo not in LISTA_FUNDOS_ISENTOS + LISTA_FUNDOS_ITAUBA_FIP:
+            continue
+
+        nome_bonito = dict_fundos_nomes.get(fundo, fundo)
+        if ('PDF_' + nome_bonito).lower() not in abas:
+            print(f"AVISO: {fundo} ficou sem PDF: não existe a aba PDF_{nome_bonito} em {os.path.basename(file_name)}")
+            sem_aba.append(fundo)
             continue
 
         df = calcula_saida_isentos(data_fundo, [fundo])
@@ -759,14 +755,15 @@ def consolidador_infos_isen_dif(date_ref=None, lista_fundos=[], file_name=None, 
         df_fundo = df[df['codigo_IAM_fundo'] == fundo].copy()
         append_to_excel(df_fundo, file_name)
 
-        nome_bonito = dict_fundos_nomes.get(fundo, fundo)
-
         output_path = path + data_fundo + '\\'
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
         calculate_formulas_excel(file_name)
-        export_PDF(file_name, 'PDF_' + nome_bonito, output_path + dict_nome_pdf[nome_bonito] + '.pdf')
+        nome_pdf = 'Tabela de Sensibilidade Indicativa do Mercado Secundario-' + nome_bonito
+        export_PDF(file_name, 'PDF_' + nome_bonito, output_path + nome_pdf + '.pdf')
+
+    return sem_aba
 
 
 def compara_historico(date_ref=None, lista_fundos=[]):
@@ -822,8 +819,17 @@ def compara_historico(date_ref=None, lista_fundos=[]):
     spread.to_clipboard(decimal=',')
 
 
-def rotina_diaria(file_name, file_name1, path):
-    """Rotina completa do dia, na ordem de sempre (o que o main rodava antes)."""
+if __name__ == '__main__':
+    path_base = filePath + r'\ScriptsPersonalizados\Relatorios_estruturados' + '\\'
+
+    file_name = path_base + 'modelo.xlsx'
+    file_name1 = path_base + 'modelo1.xlsx'
+
+    path = filePath + r'\ScriptsPersonalizados\Relatorios_estruturados\PDFs' + '\\'
+
+    # ## Se voce quiser rodar um fundo desses acima a parte, só colocar na lista abaixo e rodar
+    # consolidador_infos(date_ref='2026-08-31', lista_fundos=['ITAUFICFIDCINF', 'ITAUINFCDIRF'], file_name=file_name, path=path)
+
     ## Rodar antes das 10h pois está em oferta
     consolidador_infos(date_ref=None, lista_fundos=['ITAUFICFIDCINF', 'ITAUINFCDIRF'],
                        file_name=file_name, path=path)
@@ -854,113 +860,8 @@ def rotina_diaria(file_name, file_name1, path):
     # criar json
     union_all_json()
 
-    compara_historico(date_ref=None, lista_fundos=LISTA_FUNDOS_HISTORICO)
+    lista_fundos = ['ITAUFICFIDCINF', 'ITAUINFCDIRF', 'INTITAUCRIFII', 'ITISENTOSET28',
+                    'ITISENTOMAR29', 'ITISENTOSET29', 'INTITAUFIIAGRO', 'ITISENTOMAR28',
+                    'ITISENTOMAR30']
 
-
-# atalhos aceitos no lugar dos fundos na linha de comando
-GRUPOS_FUNDOS = {'isentos': LISTA_FUNDOS_ISENTOS, 'fip': LISTA_FUNDOS_ITAUBA_FIP}
-
-
-def ler_data(texto):
-    """Aceita AAAA-MM-DD, DD/MM/AAAA ou D-N (N dias úteis antes de hoje)."""
-    m = re.fullmatch(r'[dD]-(\d+)', texto)
-    if m:
-        return str(QsDate(date.today()).add_business_days(-int(m.group(1))))
-    for formato in ('%Y-%m-%d', '%d/%m/%Y'):
-        try:
-            return datetime.strptime(texto, formato).strftime('%Y-%m-%d')
-        except ValueError:
-            pass
-    raise argparse.ArgumentTypeError(f"data inválida: '{texto}' (use AAAA-MM-DD, DD/MM/AAAA ou D-N)")
-
-
-def ler_fundos(parser, comando, nomes, validos=None):
-    """Troca atalhos e tickers pelo codigo_IAM_fundo e confere se o comando aceita cada fundo."""
-    codigo_do_ticker = {ticker: codigo for codigo, ticker in dict_fundos_nomes.items()}
-    fundos = []
-    for nome in nomes:
-        if nome.lower() in GRUPOS_FUNDOS:
-            fundos += GRUPOS_FUNDOS[nome.lower()]
-        else:
-            fundos.append(codigo_do_ticker.get(nome.upper(), nome.upper()))
-    fundos = list(dict.fromkeys(fundos))  # tira repetidos mantendo a ordem
-
-    if validos is not None:
-        invalidos = [f for f in fundos if f not in validos]
-        if invalidos:
-            def rotulo(f):
-                return f"{f} ({dict_fundos_nomes[f]})" if f in dict_fundos_nomes else f
-            parser.error(f"'{comando}' não aceita {', '.join(map(rotulo, invalidos))}. "
-                         f"Opções: {', '.join(map(rotulo, validos))}")
-    return fundos
-
-
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-
-    tabela_fundos = '\n'.join(f'  {codigo:16s} {ticker}' for codigo, ticker in dict_fundos_nomes.items())
-    parser = argparse.ArgumentParser(
-        description='Gera as tabelas de sensibilidade dos fundos estruturados (PDF, JSON e histórico).',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"""exemplos:
-  python __main__.py diario
-  python __main__.py sensibilidade IFRA11 IFRI11
-  python __main__.py sensibilidade ICRI11 --data D-2
-  python __main__.py saida isentos fip
-  python __main__.py saida ITAUBAFIPSEN4_6_7 --data 2026-09-28
-  python __main__.py json
-  python __main__.py historico
-
-fundos (código ou ticker):
-{tabela_fundos}
-
-atalhos:
-  isentos = {' '.join(LISTA_FUNDOS_ISENTOS)}
-  fip     = {' '.join(LISTA_FUNDOS_ITAUBA_FIP)}""")
-
-    comum = argparse.ArgumentParser(add_help=False)
-    comum.add_argument('--data', type=ler_data,
-                       help='AAAA-MM-DD, DD/MM/AAAA ou D-N (N dias úteis atrás). Padrão: D-1')
-
-    sub = parser.add_subparsers(dest='comando', metavar='comando')
-    sub.add_parser('diario', help='rotina completa do dia, na ordem de sempre')
-    p = sub.add_parser('sensibilidade', parents=[comum], help='PDF de sensibilidade + JSON (consolidador_infos)')
-    p.add_argument('fundos', nargs='+', help='códigos, tickers ou atalho (isentos)')
-    p = sub.add_parser('saida', parents=[comum],
-                       help='tabela de saída dos isentos e FIPs (consolidador_infos_isen_dif)')
-    p.add_argument('fundos', nargs='+', help='códigos, tickers ou atalhos (isentos, fip)')
-    sub.add_parser('json', parents=[comum], help='junta os dados_*.json em dados_combinados.json (union_all_json)')
-    p = sub.add_parser('historico', parents=[comum],
-                       help='caixa, spread, duration e rentabilidade dos últimos dias (compara_historico)')
-    p.add_argument('fundos', nargs='*', help='padrão: fundos da rotina diária')
-
-    args = parser.parse_args(argv)
-    if args.comando is None:
-        parser.print_help()
-        sys.exit(2)
-
-    path_base = filePath + r'\ScriptsPersonalizados\Relatorios_estruturados' + '\\'
-
-    file_name = path_base + 'modelo.xlsx'
-    file_name1 = path_base + 'modelo1.xlsx'
-
-    path = filePath + r'\ScriptsPersonalizados\Relatorios_estruturados\PDFs' + '\\'
-
-    if args.comando == 'diario':
-        rotina_diaria(file_name, file_name1, path)
-    elif args.comando == 'sensibilidade':
-        fundos = ler_fundos(parser, args.comando, args.fundos, validos=list(dict_fundos_nomes))
-        consolidador_infos(date_ref=args.data, lista_fundos=fundos, file_name=file_name, path=path)
-    elif args.comando == 'saida':
-        fundos = ler_fundos(parser, args.comando, args.fundos,
-                            validos=LISTA_FUNDOS_ISENTOS + LISTA_FUNDOS_ITAUBA_FIP)
-        consolidador_infos_isen_dif(date_ref=args.data, lista_fundos=fundos, file_name=file_name1, path=path)
-    elif args.comando == 'json':
-        union_all_json(date_ref=args.data)
-    elif args.comando == 'historico':
-        fundos = ler_fundos(parser, args.comando, args.fundos) or LISTA_FUNDOS_HISTORICO
-        compara_historico(date_ref=args.data, lista_fundos=fundos)
-
-
-if __name__ == '__main__':
-    main()
+    compara_historico(date_ref=None, lista_fundos=lista_fundos)
