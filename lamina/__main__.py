@@ -453,25 +453,26 @@ def calcula_info_isentos(date_ref=None, lista_fundos=[]):
 def calcula_saida_isentos(date_ref=None, lista_fundos=[]):
     df_fim = pd.DataFrame()
 
-    # [FIX] parametros por fundo em dicionario
+    # [FIX] parametros por fundo em dicionario: (data inicial, cota inicial, rentabilidade-alvo em % do CDI)
+    # ITAUBAs FIP: 1ª emissão (séries 1 a 3) 93%, 2ª e 3ª emissões (séries 4 a 9) 92%
     params_saida = {
-        'ITISENTOMAR29': ('2025-06-05', 100),
-        'ITISENTOSET28': ('2025-06-11', 100),
-        'ITISENTOSET29': ('2025-08-27', 1000),
-        'ITISENTOMAR28': ('2025-11-17', 1035.16),
-        'ITISENTOMAR30': ('2025-12-23', 1012.12),
-        'ITAUBAFIPSEN1_3': ('2026-05-08', 1006.54),
-        'ITAUBAFIPSEN2': ('2026-04-29', 1003.538),
-        'ITAUBAFIPSEN4_6_7': ('2026-06-26', 1009.327),
-        'ITAUBAFIPSEN5': ('2026-06-19', 1006.892),
-        'ITAUBAFIPSEN8_9': ('2026-07-17', 1002.419),
+        'ITISENTOMAR29': ('2025-06-05', 100, 0.93),
+        'ITISENTOSET28': ('2025-06-11', 100, 0.93),
+        'ITISENTOSET29': ('2025-08-27', 1000, 0.93),
+        'ITISENTOMAR28': ('2025-11-17', 1035.16, 0.93),
+        'ITISENTOMAR30': ('2025-12-23', 1012.12, 0.93),
+        'ITAUBAFIPSEN1_3': ('2026-05-08', 1006.54, 0.93),
+        'ITAUBAFIPSEN2': ('2026-04-29', 1003.538, 0.93),
+        'ITAUBAFIPSEN4_6_7': ('2026-06-26', 1009.327, 0.92),
+        'ITAUBAFIPSEN5': ('2026-06-19', 1006.892, 0.92),
+        'ITAUBAFIPSEN8_9': ('2026-07-17', 1002.419, 0.92),
     }
 
     for fundo in lista_fundos:
         if fundo not in params_saida:
             raise ValueError(f"Fundo isento sem parametrizacao de saida: {fundo}")
 
-        ini_date, cota_ini = params_saida[fundo]
+        ini_date, cota_ini, perc_cdi_alvo = params_saida[fundo]
 
         # liquidação em D+1 para os ITAUBAs FIP e D+2 para os demais, com D = data da tabela (date_ref + 1)
         prazo_liq = 1 if fundo in LISTA_FUNDOS_ITAUBA_FIP else 2
@@ -495,13 +496,13 @@ def calcula_saida_isentos(date_ref=None, lista_fundos=[]):
 
         # diarizar rentab 100
         rent_100_cdi_dia = (1 + rent_100cdi) ** (1 / dif) - 1
-        rent_93cdi = (1 + rent_100_cdi_dia * 0.93) ** (dif) - 1
+        rent_alvo_cdi = (1 + rent_100_cdi_dia * perc_cdi_alvo) ** (dif) - 1
 
         # ITAUBAs FIP não pagam emolumentos
         emol = 1.0 if fundo in LISTA_FUNDOS_ITAUBA_FIP else 1.0003
 
         # cota hoje
-        cota = truncate(cota_ini * (1 + rent_93cdi) * emol, 2) + 0.01
+        cota = truncate(cota_ini * (1 + rent_alvo_cdi) * emol, 2) + 0.01
 
         df = pd.DataFrame()
 
