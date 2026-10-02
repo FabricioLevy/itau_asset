@@ -106,17 +106,12 @@ def roundup(valor, casas_decimais):
     return math.ceil(round(valor * fator, 6)) / fator
 
 
-def fator_cdi_dia(pnl_perc):
-    """
-    Fator diario do CDI como na coluna 'CDI 100%' da aba SERIES: TRUNC((1 + CDI anual)^(1/252), 8).
-
-    O pnl_perc do banco e o fator oficial da B3, que e ARREDONDADO em 8 casas: em 14,15% a.a. ele da
-    1,00052531, enquanto a planilha trunca e usa 1,00052530 (o mesmo vale para 14,40%). Essa diferenca
-    de 1e-8 por dia acumula ~0,001 no PU. Por isso recupera a taxa anual (CDI tem 2 casas em %) e
-    refaz o fator com a convencao da planilha.
-    """
-    taxa_anual = round((1 + pnl_perc) ** 252 - 1, 4)
-    return truncate((1 + taxa_anual) ** (1 / 252), 8)
+def taxa_anual_cdi(preco_limpo, data):
+    """Taxa anual do indice 'CDI' (preco_limpo) como fracao: aceita 14.15 (em %) ou 0.1415."""
+    taxa = preco_limpo / 100 if preco_limpo > 1 else preco_limpo
+    if not 0.01 < taxa < 0.5:
+        raise ValueError(f"CDI de {data} fora do esperado para taxa anual: preco_limpo = {preco_limpo}")
+    return taxa
 
 
 def get_curva_cdi_itauba_fip(date_calc, perc_alvo=0.91):
@@ -125,46 +120,67 @@ def get_curva_cdi_itauba_fip(date_calc, perc_alvo=0.91):
     da aba SERIES do dados.xlsx, a partir da data-base ANCORA_ITAUBA_FIP (exclusive) até
     date_calc (inclusive), truncando em 8 casas a cada passo (mesma convencao da planilha).
 
-    Se o CDIAcumulado ainda nao tiver dado realizado até date_calc (dias futuros/projetados,
-    ex.: hoje ou feriado no meio do caminho), completa os dias faltantes repetindo a ultima
-    taxa diaria conhecida.
+    A taxa de cada dia vem do indice 'CDI' (taxa anual do proprio dia, coluna D da planilha) e o
+    fator diario e TRUNC((1 + CDI)^(1/252), 8). Nao usa o CDIAcumulado: o pnl_perc dele na data d
+    e o rendimento de d-1 para d (taxa do dia util anterior, curva deslocada 1 dia nas mudancas de
+    taxa) e vem com o fator da B3 arredondado (1,00052531 em 14,15% a.a., a planilha trunca em 1,00052530).
+
+    Dias uteis sem CDI no banco (date_calc futura ou buraco na base) repetem a ultima taxa
+    conhecida e saem com projetado = True.
 
     Retorna um DataFrame indexado pela data ('YYYY-MM-DD') com as colunas:
-    dias, fator_dia, cdi_100, cdi_alvo, du_alvo, projetado.
+    dias, cdi_anual, fator_dia, cdi_100, cdi_alvo, du_alvo, projetado.
     """
     sql = f"""
-        SELECT date, pnl_perc
+        SELECT date, preco_limpo
         from FUNDOS_DADOS_INDICES (nolock)
-        where codigo_IAM_indice = 'CDIAcumulado'
+        where codigo_IAM_indice = 'CDI'
         and date > '{ANCORA_ITAUBA_FIP}' and date <= '{date_calc}'
         order by date
     """
     df_cdi = pd.read_sql(sql, conn)
-    if df_cdi.empty:
-        raise ValueError(f"Sem dados de CDIAcumulado entre {ANCORA_ITAUBA_FIP} e {date_calc}")
+    datas_cdi = [str(d)[:10] for d in df_cdi['date']]
+    if len(set(datas_cdi)) < len(datas_cdi):
+        raise ValueError(f"CDI com mais de uma linha na mesma data entre {ANCORA_ITAUBA_FIP} e {date_calc}")
+    cdi_por_data = {d: taxa_anual_cdi(v, d) for d, v in zip(datas_cdi, df_cdi['preco_limpo'])}
+    ultima_data_cdi = max(datas_cdi, default='')
 
-    datas = [str(d)[:10] for d in df_cdi['date']]
-    pnls = df_cdi['pnl_perc'].tolist()
-    n_realizados = len(datas)
-
-    # dias uteis entre a ultima data realizada no banco e date_calc: projeta mantendo a
-    # ultima taxa diaria conhecida constante (feriado no meio do caminho ou date_calc futura)
-    while datas[-1] < date_calc:
-        datas.append(str(QsDate(datas[-1]).add_business_days(1)))
-        pnls.append(pnls[-1])
-
+    # uma linha por dia util do calendario (coluna DIAS da planilha), independente das linhas do banco
     cdi_100 = 1.0
+    cdi_anual = None
     linhas = []
-    for i, (data, pnl_perc) in enumerate(zip(datas, pnls), start=1):
-        fator_dia = fator_cdi_dia(pnl_perc)
+    buracos = []
+    data = ANCORA_ITAUBA_FIP
+    i = 0
+    while data < date_calc:
+        data = str(QsDate(data).add_business_days(1))
+        i += 1
+        projetado = data not in cdi_por_data
+        if not projetado:
+            cdi_anual = cdi_por_data[data]
+        elif cdi_anual is None:
+            raise ValueError(f"Sem CDI em {data}, primeiro dia util depois da data-base {ANCORA_ITAUBA_FIP}")
+        elif data < ultima_data_cdi:
+            buracos.append(data)
+
+        fator_dia = truncate((1 + cdi_anual) ** (1 / 252), 8)
         cdi_100 = truncate(fator_dia * cdi_100, 8)
         taxa_media_dia = cdi_100 ** (1 / i) - 1
         cdi_alvo = truncate((taxa_media_dia * perc_alvo + 1) ** i, 8)
         du_alvo = truncate((fator_dia - 1) * perc_alvo + 1, 8)
-        linhas.append((data, i, fator_dia, cdi_100, cdi_alvo, du_alvo, i > n_realizados))
+        linhas.append((data, i, cdi_anual, fator_dia, cdi_100, cdi_alvo, du_alvo, projetado))
 
-    curva = pd.DataFrame(linhas, columns=['date', 'dias', 'fator_dia', 'cdi_100', 'cdi_alvo', 'du_alvo', 'projetado'])
+    curva = pd.DataFrame(linhas, columns=['date', 'dias', 'cdi_anual', 'fator_dia', 'cdi_100', 'cdi_alvo',
+                                          'du_alvo', 'projetado'])
     curva.set_index('date', inplace=True)
+
+    # calendario do QsDate diferente do banco muda a contagem de DIAS: avisa nos dois sentidos
+    if buracos:
+        print(f"AVISO: dias uteis sem CDI no banco (repetida a taxa do dia anterior): {buracos}")
+    fora_do_calendario = sorted(set(cdi_por_data) - set(curva.index))
+    if fora_do_calendario:
+        print(f"AVISO: datas com CDI no banco que nao sao dia util no calendario (ignoradas): {fora_do_calendario}")
+
     return curva
 
 
@@ -588,6 +604,12 @@ def calcula_saida_isentos(date_ref=None, lista_fundos=[], dias_cdi_extra=0, verb
 
         if perc_cdi_alvo not in curvas_cache:
             curvas_cache[perc_cdi_alvo] = get_curva_cdi_itauba_fip(date_calc, perc_cdi_alvo)
+            if verbose:
+                # datas em que a taxa muda: tem que bater com as trocas da coluna CDI da aba SERIES
+                cdi = curvas_cache[perc_cdi_alvo]['cdi_anual']
+                trocas = cdi[cdi.ne(cdi.shift())]
+                print('CDI na curva a partir de: ' + ' | '.join(
+                    f"{pd.Timestamp(d):%d/%m} {t:.2%}" for d, t in trocas.items()))
         curva = curvas_cache[perc_cdi_alvo]
         if ini_date not in curva.index:
             raise ValueError(f"Data inicial {ini_date} do fundo {fundo} fora da curva CDI calculada")
