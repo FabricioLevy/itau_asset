@@ -8,7 +8,7 @@ HOST = "tmxvettafi.files.com"
 PORT = 22
 USERNAME = "fabricio.levy@itau-unibanco.com.br"  # usuário SFTP da conta Files.com (Configurações > Usuários > Nome de usuário)
 KEY_PATH = "../input/id_api_key.txt"
-PASSPHRASE = 'Fblevy@&987403626'  # senha da chave privada, se houver
+PASSPHRASE = ''  # senha da chave privada, se houver
 OUTPUT_DIR = "../output"
 DATA_HOJE = date.today().strftime("%Y%m%d")
 
