@@ -1,0 +1,10 @@
+# NTN-B calculadas pelo ntnb/__main__.py: uma por linha, separador ";" (ou tab), datas dd/mm/aaaa.
+#   codigo_IAM_ativo  ISIN, o mesmo código do DBSX337 (FUNDOS_DADOS_ATIVOS / fundos_cadastro_ativos)
+#   data_inicio       1º dia da série
+#   cota_inicio       cota nesse dia. Com a cota_acumulada do FUNDOS_DADOS_ATIVOS no dia, a série
+#                     continua a do banco; vazio = 1.
+# O input/titulos_do_banco.sql gera estas linhas a partir do banco (dá para colar o resultado do SSMS).
+codigo_IAM_ativo;vencimento;data_inicio;cota_inicio
+BRSTNCNTB0O7;15/05/2035;02/01/2023;
+BRSTNCNTB3D4;15/08/2050;02/01/2023;
+BRSTNCNTB690;15/08/2060;02/01/2023;1,02795076320369
