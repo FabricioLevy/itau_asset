@@ -4,10 +4,12 @@
 # DBSX337.dbo.ntnb_cotas — substitui a cota_acumulada do dbsx337.dbo.FUNDOS_DADOS_ATIVOS (ex.:
 # BRSTNCNTB690 = NTN-B 15/08/2060) quando o banco não está acessível.
 #
-# Títulos (input/titulos.csv, 1 linha por NTN-B): codigo_IAM_ativo;vencimento;data_inicio;cota_inicio
-#   codigo_IAM_ativo = ISIN, o mesmo código do FUNDOS_DADOS_ATIVOS. A série começa na data_inicio com a
-#   cota_inicio (a cota_acumulada do banco nesse dia continua a série dele; vazio = 1).
-#   input/titulos_do_banco.sql gera essas linhas a partir do cadastro do DBSX337.
+# Títulos (input/titulos.csv, 1 linha por NTN-B): codigo_IAM_ativo;vencimento;data_inicio;cota;data_cota
+#   codigo_IAM_ativo = ISIN, o mesmo código do FUNDOS_DADOS_ATIVOS. A série começa na data_inicio (ou no
+#   1º PU, se o título foi emitido depois) e é escalada para a série reinvestindo valer "cota" em
+#   data_cota (vazia = 1º dia) — com a cota_acumulada do banco num dia qualquer, a série continua a dele.
+#   Sem cota, começa em 1. input/titulos_do_banco.sql gera essas linhas a partir do cadastro do DBSX337.
+#   NTN-B vencida não entra: o Broadcast apaga o código no vencimento (#BCPERM).
 #
 # Saída (./output/):
 #   ntnb_<aaaammdd>.xlsx: 1 aba por NTN-B — Data | Taxa indicativa | PU | VNA | Cupom pago |
@@ -21,12 +23,16 @@
 #   cota_acumulada = reinvestindo o cupom (mesmo nome do FUNDOS_DADOS_ATIVOS).
 #
 # Fontes (Broadcast+, função BCH do add-in Excel, campo ULT — mesma conexão do captacao.py):
-#   NB<aammdd>P-AE  PU indicativo ANBIMA (ex.: NB600815P-AE = NTN-B 15/08/2060)
-#   VNANTB          VNA da NTN-B (ANBIMA) — base do cupom
-#   NTNB<aammdd>    taxa indicativa ANBIMA (% a.a.) — só informativa
-#   Códigos achados no cache do terminal (bctab.cache) e no painel IMA-B; 1 BCH traz ~4 anos.
+#   NTNB<aammdd>    taxa indicativa ANBIMA (% a.a.) (ex.: NTNB600815 = NTN-B 15/08/2060)
+#   VNANTB          VNA da NTN-B (ANBIMA)
+#   NB<aammdd>P-AE  PU indicativo ANBIMA — conferência, e reserva nos dias sem taxa
+#   Códigos achados no cache do terminal (bctab.cache) e no painel IMA-B; o histórico vai até a emissão
+#   (ou antes de 2021).
+#   PU usado = PU ANBIMA pela taxa e o VNA (pu_anbima: reproduz o PU do Broadcast nos ~15 mil dias bons).
+#   O feed de PU do Broadcast às vezes troca o PU entre títulos (24-27/08/2026, 15/03/2023, 19/02/2021)
+#   ou traz o do dia seguinte/anterior; a taxa não. Dias divergentes saem na aba "Avisos" do Excel.
 #
-# Cálculo (base = cota_inicio, igual para as 3 séries):
+# Cálculo (base = cota no 1º dia, igual para as 3 séries; vem da "cota" da lista):
 #   cupom (R$) no dia de pagamento = VNA x ((1,06)^(1/2) - 1), sem truncar (como o banco).
 #     Pagamento: dia 15 do mês de cupom (fev/ago p/ vencimento em agosto, mai/nov p/ maio) ou
 #     o dia útil seguinte (calendário ANBIMA); o PU ANBIMA desse dia já é ex-cupom.
@@ -49,13 +55,16 @@
 # ─────────────────────────────────────────────
 
 import argparse
+import functools
 import glob
+import math
 import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+import numpy as np
 import pandas as pd
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -70,6 +79,9 @@ CODIGO_VNA = "VNANTB"
 # (1,06)^(1/2) - 1 sem truncar, como o FUNDOS_DADOS_ATIVOS (o Tesouro trunca em 2,956301% e o cupom
 # na 6ª casa: ~R$ 0,00002 a menos por cupom, 4e-9 na cota)
 FATOR_CUPOM = 1.06 ** 0.5 - 1
+CUPOM_ANBIMA = 2.956301            # cupom semestral em % do VNA na cotação ANBIMA
+INICIO_20NOV = date(2023, 12, 26)  # 1º dia em que a ANBIMA conta o 20/11 (Lei 14.759/2023) até os fluxos
+TOLERANCIA_PU = 1e-5               # PU do Broadcast x PU pela taxa (o Broadcast às vezes tem menos casas)
 
 TABELA_SQL = "dbo.ntnb_cotas"
 # coluna -> casas decimais, igual ao DECIMAL(p,s) de input/create_ntnb_cotas.sql (None = texto/data)
@@ -102,8 +114,8 @@ def _numero(s):
 
 
 def carregar_lista(caminho):
-    """titulos.csv -> {codigo_IAM_ativo: {"venc", "inicio", "base"}}. Separador ; ou tab (resultado do
-    SSMS colado); linha com # é comentário e cabeçalho repetido é ignorado."""
+    """titulos.csv -> {codigo_IAM_ativo: {"venc", "inicio", "cota", "data_cota"}}. Separador ; ou tab
+    (resultado do SSMS colado); linha com # é comentário e cabeçalho repetido é ignorado."""
     try:
         texto = open(caminho, encoding="utf-8-sig").read()
     except UnicodeDecodeError:
@@ -118,17 +130,22 @@ def carregar_lista(caminho):
         try:
             codigo = campos[0].upper()
             venc, inicio = _data_flex(campos[1]), _data_flex(campos[2])
-            base = _numero(campos[3] if len(campos) > 3 else "")
+            cota = _numero(campos[3] if len(campos) > 3 else "")
+            data_cota = campos[4] if len(campos) > 4 and campos[4].upper() not in ("", "NULL") else None
+            data_cota = _data_flex(data_cota) if data_cota else None
         except (IndexError, ValueError) as e:
             raise ValueError(f"{caminho}, linha {n}: {linha.strip()!r} ({e})") from None
         erro = ("NTN-B vence em 15/05 ou 15/08" if venc.day != 15 or venc.month not in (5, 8)
                 else "data_inicio depois do vencimento" if inicio >= venc
-                else "cota_inicio precisa ser > 0" if base is not None and base <= 0
+                else "cota precisa ser > 0" if cota is not None and cota <= 0
+                else "data_cota sem cota" if data_cota and cota is None
+                else "data_cota fora do período do título" if data_cota and not inicio <= data_cota < venc
                 else f"título repetido (linha {titulos[codigo]['linha']})" if codigo in titulos
                 else f"vencimento repetido ({vencs[venc]})" if venc in vencs else None)
         if erro:
             raise ValueError(f"{caminho}, linha {n}: {erro}")
-        titulos[codigo] = {"venc": venc, "inicio": inicio, "base": 1.0 if base is None else base, "linha": n}
+        titulos[codigo] = {"venc": venc, "inicio": inicio, "cota": 1.0 if cota is None else cota,
+                           "data_cota": data_cota, "linha": n}
         vencs[venc] = codigo
     if not titulos:
         raise ValueError(f"nenhuma NTN-B em {caminho}")
@@ -140,11 +157,15 @@ def _formula(codigo, inicio, fim):
     return f'=BCH("{codigo}","DRF;ULT","{inicio:%d/%m/%Y}","{fim:%d/%m/%Y}","ASC=DRF","TITULO=S")'
 
 
+def _serie_vazia():
+    return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
+
+
 def _ler_serie(ws):
     """Bloco DRF | ULT devolvido pelo BCH -> Series(data -> valor)."""
     valores = cp._com(lambda: ws.Range("A1").CurrentRegion.Value)
     if not isinstance(valores, tuple) or len(valores) < 2:
-        return pd.Series(dtype=float)
+        return _serie_vazia()
     df = pd.DataFrame([list(v) for v in valores[1:]], columns=[str(t).strip().upper() for t in valores[0]])
     df = df.apply(pd.to_numeric, errors="coerce")
     # DRF é data OLE Automation; erro do Excel (#N/A...) chega como inteiro negativo e o BCH devolve 0 sem cotação
@@ -227,36 +248,59 @@ def proximo_dia_util(d):
     return d
 
 
+def meses_cupom(venc):
+    return sorted({venc.month, (venc.month + 5) % 12 + 1})
+
+
 def datas_pagamento(venc, inicio, fim):
     """Pagamentos de cupom em (inicio, fim] antes do vencimento: dia 15 dos meses de cupom ou o dia
     útil seguinte. Quem entra no dia de um pagamento compra o título ex-cupom, então o 1º dia não recebe."""
-    meses = sorted({venc.month, (venc.month + 5) % 12 + 1})
     datas = []
     for ano in range(inicio.year, fim.year + 1):
-        for mes in meses:
-            d = proximo_dia_util(datetime(ano, mes, 15).date())
+        for mes in meses_cupom(venc):
+            d = proximo_dia_util(date(ano, mes, 15))
             if inicio < d <= fim and d < venc:
                 datas.append(d)
     return datas
 
 
-def montar_tabela(pu, vna, taxa, venc, base):
-    df = pd.DataFrame({"pu": pu}).join(pd.DataFrame({"vna": vna, "taxa": taxa}), how="left")
+@functools.lru_cache(maxsize=2)
+def _feriados(com_20nov):
+    """Feriados ANBIMA para contar os dias úteis até os fluxos (sem o 20/11 antes de INICIO_20NOV)."""
+    return np.array(sorted(d for a in range(2000, 2080) for d in cp.feriados_nacionais(a)
+                           if com_20nov or (d.month, d.day) != (11, 20)), dtype="datetime64[D]")
+
+
+def pu_anbima(venc, d, taxa, vna):
+    """PU ANBIMA da NTN-B no dia d: VNA x cotação, cotação = fluxos (cupom de 2,956301% e 100 no
+    vencimento) descontados pela taxa indicativa em du/252, truncada na 4ª casa; PU truncado na 6ª."""
+    fluxos = np.array([date(a, m, 15) for a in range(d.year, venc.year + 1) for m in meses_cupom(venc)
+                       if d < date(a, m, 15) <= venc], dtype="datetime64[D]")
+    if not len(fluxos):
+        return float("nan")
+    du = np.busday_count(np.datetime64(d), fluxos, holidays=_feriados(d >= INICIO_20NOV))
+    desconto = (1 + taxa / 100) ** (du / 252)
+    cotacao = math.floor(((CUPOM_ANBIMA / desconto).sum() + 100 / desconto[-1]) * 1e4) / 1e4
+    return math.floor(vna * cotacao / 100 * 1e6) / 1e6
+
+
+def montar_tabela(df, venc):
+    """df com pu e vna por dia -> + cupom e as 3 cotas, que começam em 1 no 1º dia."""
     inicio, fim = df.index[0].date(), df.index[-1].date()
 
     df["cupom"] = 0.0
     for d in map(pd.Timestamp, datas_pagamento(venc, inicio, fim)):
         if d not in df.index:
-            raise RuntimeError(f"sem PU no dia do cupom {d:%d/%m/%Y}: a série do Broadcast tem buraco")
+            raise RuntimeError(f"sem preço no dia do cupom {d:%d/%m/%Y}: a série do Broadcast tem buraco")
         if pd.isna(df.at[d, "vna"]):
             raise RuntimeError(f"sem VNA ({CODIGO_VNA}) no dia do cupom {d:%d/%m/%Y}")
         df.at[d, "cupom"] = df.at[d, "vna"] * FATOR_CUPOM
 
     fator = (df["pu"] + df["cupom"]) / df["pu"].shift()
     fator.iloc[0] = 1.0
-    df["cota_reinvestindo"] = base * fator.cumprod()
-    df["cota_sem_reinvestir"] = base * (df["pu"] + df["cupom"].cumsum()) / df["pu"].iloc[0]
-    df["cota_preco"] = base * df["pu"] / df["pu"].iloc[0]
+    df["cota_reinvestindo"] = fator.cumprod()
+    df["cota_sem_reinvestir"] = (df["pu"] + df["cupom"].cumsum()) / df["pu"].iloc[0]
+    df["cota_preco"] = df["pu"] / df["pu"].iloc[0]
     return df
 
 
@@ -271,29 +315,70 @@ def dias_faltando(datas):
     return faltam
 
 
-def calcular(codigo, t, pu, vna, taxa, fim):
-    """Série de um título desde a data_inicio. pu/taxa: Series ou a mensagem de erro do BCH."""
-    rotulo = f"{nome(t['venc'])} ({codigo})"
-    if isinstance(pu, str):
-        raise RuntimeError(f"PU {codigos(t['venc'])['pu']}: {pu}")
-    pu = pu.loc[pd.Timestamp(t["inicio"]):]
-    if pu.empty:
-        raise RuntimeError(f"sem PU desde {t['inicio']:%d/%m/%Y}")
-    if isinstance(taxa, str):
-        print(f"[AVISO] {rotulo}: taxa indisponível ({taxa}): coluna em branco")
-        taxa = pd.Series(dtype=float)
-    if pu.index[0].date() != t["inicio"]:
-        print(f"[AVISO] {rotulo}: sem PU em {t['inicio']:%d/%m/%Y}; a série começa em {pu.index[0]:%d/%m/%Y} "
-              f"(com a cota_inicio)")
-    df = montar_tabela(pu, vna, taxa, t["venc"], t["base"])
+# (chave, nível, texto) das notas de calcular(), na ordem em que saem no console e na aba "Avisos"
+NOTAS = [("emissao", "INFO", "série começa no 1º preço (título emitido depois da data_inicio)"),
+         ("diverge", "AVISO", "PU do Broadcast trocado/defasado: usado o PU ANBIMA pela taxa"),
+         ("so_taxa", "INFO", "sem PU no Broadcast: usado o PU ANBIMA pela taxa"),
+         ("so_pu", "AVISO", "sem taxa no Broadcast: PU do Broadcast sem conferência"),
+         ("nao_util", "AVISO", "preço em dia não útil descartado"),
+         ("falta", "AVISO", "dia útil sem preço no Broadcast (o retorno do dia seguinte cobre o intervalo)"),
+         ("vencido", "INFO", "título vencido: a série vai até o último preço (o resgate não entra)")]
 
-    faltam = dias_faltando(df.index)
-    if faltam:
-        print(f"[AVISO] {rotulo}: {len(faltam)} dia(s) útil(eis) sem PU no Broadcast (o retorno do dia seguinte "
-              f"cobre o intervalo): {', '.join(f'{d:%d/%m/%Y}' for d in faltam[:10])}{' ...' if len(faltam) > 10 else ''}")
+
+def calcular(codigo, t, pu_bc, vna, taxa, fim):
+    """Série de um título desde a data_inicio, escalada para a reinvestindo valer t["cota"] em
+    t["data_cota"] (ou no 1º dia). pu_bc/taxa: Series ou a mensagem de erro do BCH.
+    Devolve (df, {chave de NOTAS: [datas]})."""
+    if isinstance(taxa, str):
+        print(f"[AVISO] {nome(t['venc'])} ({codigo}): taxa indisponível ({taxa}): PU só do Broadcast, sem conferência")
+        taxa = _serie_vazia()
+    if isinstance(pu_bc, str):
+        if taxa.empty:
+            raise RuntimeError(f"PU {codigos(t['venc'])['pu']}: {pu_bc}")
+        print(f"[AVISO] {nome(t['venc'])} ({codigo}): PU do Broadcast indisponível ({pu_bc}): só o PU pela taxa")
+        pu_bc = _serie_vazia()
+    inicio = pd.Timestamp(t["inicio"])
+    pu_bc, taxa = pu_bc.loc[inicio:], taxa.loc[inicio:]
+    dias = pu_bc.index.union(taxa.index)
+    # o Broadcast às vezes traz preço em dia sem ANBIMA (sábado 12/07/2025 com o PU da segunda;
+    # NTNB 2055 no domingo 28/07/2024 com o PU = VNA)
+    util = np.array([cp.dia_util(d.date()) for d in dias], dtype=bool)
+    notas = {"nao_util": list(dias[~util].date)}
+    df = pd.DataFrame({"pu_broadcast": pu_bc, "taxa": taxa}, index=dias[util]).join(vna.rename("vna"), how="left")
+
+    calc = pd.Series([pu_anbima(t["venc"], d.date(), tx, v) if pd.notna(tx) and pd.notna(v) else np.nan
+                      for d, tx, v in zip(df.index, df["taxa"], df["vna"])], index=df.index, dtype=float)
+    tem_bc, tem_calc = df["pu_broadcast"].notna(), calc.notna()
+    notas["diverge"] = list(df.index[tem_bc & tem_calc & ((df["pu_broadcast"] / calc - 1).abs() > TOLERANCIA_PU)].date)
+    notas["so_taxa"] = list(df.index[~tem_bc & tem_calc].date)
+    notas["so_pu"] = list(df.index[tem_bc & ~tem_calc].date)
+    df["pu"] = calc.fillna(df["pu_broadcast"])
+    df = df.dropna(subset=["pu"])
+    if df.empty:
+        raise RuntimeError(f"sem preço desde {t['inicio']:%d/%m/%Y}")
+    if df.index[0] != inicio:
+        notas["emissao"] = [df.index[0].date()]
+    df = montar_tabela(df, t["venc"])
+
+    ancora = pd.Timestamp(t["data_cota"] or df.index[0])
+    if ancora not in df.index:
+        raise RuntimeError(f"sem preço na data_cota {ancora:%d/%m/%Y}: escolha um dia com preço")
+    df[["cota_reinvestindo", "cota_sem_reinvestir", "cota_preco"]] *= t["cota"] / df.at[ancora, "cota_reinvestindo"]
+
+    notas["falta"] = dias_faltando(df.index)
     if t["venc"] <= fim:
-        print(f"[INFO] {rotulo}: venceu em {t['venc']:%d/%m/%Y}; a série vai até o último PU (o resgate não entra)")
-    return df
+        notas["vencido"] = [t["venc"]]
+    return df, notas
+
+
+def imprimir_notas(notas):
+    """notas: {chave: {data: [títulos]}} -> uma linha por tipo."""
+    for chave, nivel, texto in NOTAS:
+        por_dia = sorted(notas.get(chave, {}).items())
+        if por_dia:
+            itens = [f"{d:%d/%m/%Y} ({', '.join(n) if len(n) <= 3 else f'{len(n)} títulos'})" for d, n in por_dia]
+            print(f"[{nivel}] {texto} — {len(itens)} dia(s): {', '.join(itens[:12])}"
+                  f"{f' ... (lista completa na aba Avisos)' if len(itens) > 12 else ''}")
 
 
 # ── Saída ────────────────────────────────────────────────────────────────────
@@ -303,12 +388,13 @@ COLUNAS = [("taxa", "Taxa indicativa (% a.a.)", "0.0000"),
            ("cupom", "Cupom pago (R$)", "#,##0.000000"),
            ("cota_reinvestindo", "Cota reinvestindo o cupom", "0.00000000000000"),
            ("cota_sem_reinvestir", "Cota sem reinvestir (cupom em caixa)", "0.00000000000000"),
-           ("cota_preco", "Cota só preço (PU)", "0.00000000000000")]
-COLUNAS_DATA = {"Data", "Pagamento", "Vencimento", "Início"}
+           ("cota_preco", "Cota só preço (PU)", "0.00000000000000"),
+           ("pu_broadcast", "PU do Broadcast (R$)", "#,##0.000000")]
+COLUNAS_DATA = {"Data", "Pagamento", "Vencimento", "Início", "Data da cota"}
 
 
-def salvar_xlsx(series, titulos, caminho):
-    """{codigo: (venc, df)} -> 1 aba por NTN-B + "Cupons" (todas) + "Fonte"."""
+def salvar_xlsx(series, titulos, notas, caminho):
+    """{codigo: (venc, df)} -> 1 aba por NTN-B + "Cupons" (todas) + "Fonte" + "Avisos" (as notas de calcular)."""
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
 
@@ -325,15 +411,21 @@ def salvar_xlsx(series, titulos, caminho):
             cods = codigos(venc)
             fonte.append({"Título": nome(venc), "codigo_IAM_ativo": codigo, "Vencimento": venc,
                           "PU": cods["pu"], "Taxa": cods["taxa"], "VNA": cods["vna"],
-                          "Início": df.index[0].date(), "Cota no início": titulos[codigo]["base"]})
+                          "Início": df.index[0].date(), "Cota no início": df["cota_reinvestindo"].iloc[0],
+                          "Cota informada": titulos[codigo]["cota"],
+                          "Data da cota": titulos[codigo]["data_cota"] or df.index[0].date()})
         cupons = pd.concat(cupons).sort_index()
         cupons.index.name = "Pagamento"
         cupons.reset_index().to_excel(xw, sheet_name="Cupons", index=False)
         pd.DataFrame(fonte).to_excel(xw, sheet_name="Fonte", index=False)
+        pd.DataFrame([{"Data": d, "Aviso": texto, "Títulos": ", ".join(n)}
+                      for chave, _, texto in NOTAS for d, n in sorted(notas.get(chave, {}).items())],
+                     columns=["Data", "Aviso", "Títulos"]).to_excel(xw, sheet_name="Avisos", index=False)
 
-        formatos = {n: f for _, n, f in COLUNAS} | {"VNA (R$)": "#,##0.000000", "Cupom (R$)": "#,##0.000000",
+        formatos ={n: f for _, n, f in COLUNAS} | {"VNA (R$)": "#,##0.000000", "Cupom (R$)": "#,##0.000000",
                                                      "PU ex-cupom (R$)": "#,##0.000000",
-                                                     "Cota no início": "0.00000000000000"}
+                                                     "Cota no início": "0.00000000000000",
+                                                     "Cota informada": "0.00000000000000"}
         for ws in xw.book.worksheets:
             ws.freeze_panes = "B2"
             for j, cel in enumerate(ws[1], start=1):
@@ -495,14 +587,20 @@ def main(argv=None):
     vna = res[CODIGO_VNA]
     if isinstance(vna, str) or vna.empty:
         sys.exit(f"[ERRO] {CODIGO_VNA} (VNA): {vna if isinstance(vna, str) else 'sem dados no período'}")
-    series = {}
+    series, notas = {}, {}  # notas: {chave: {data: [títulos]}} — o mesmo dia costuma valer para vários títulos
     for c, t in titulos.items():
         try:
-            series[c] = (t["venc"], calcular(c, t, res[cods[c]["pu"]], vna, res[cods[c]["taxa"]], args.fim))
+            df, n = calcular(c, t, res[cods[c]["pu"]], vna, res[cods[c]["taxa"]], args.fim)
         except RuntimeError as e:
             print(f"[ERRO] {nome(t['venc'])} ({c}): {e} — fica de fora")
+            continue
+        series[c] = (t["venc"], df)
+        for chave, dias in n.items():
+            for d in dias:
+                notas.setdefault(chave, {}).setdefault(d, []).append(nome(t["venc"]))
     if not series:
         sys.exit("[ERRO] nenhuma NTN-B calculada")
+    imprimir_notas(notas)
 
     for c, (venc, df) in series.items():
         u = df.iloc[-1]
@@ -513,7 +611,7 @@ def main(argv=None):
     fim = max(df.index[-1] for _, df in series.values())
     os.makedirs(SAIDA_DIR, exist_ok=True)
     xlsx = os.path.join(SAIDA_DIR, f"ntnb_{fim:%Y%m%d}.xlsx")
-    salvar_xlsx(series, titulos, xlsx)
+    salvar_xlsx(series, titulos, notas, xlsx)
     print(f"[OK] {xlsx}")
     tab = tabela_sql(series)
     csv = os.path.join(SAIDA_DIR, f"ntnb_cotas_{fim:%Y%m%d}.csv")

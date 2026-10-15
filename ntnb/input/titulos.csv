@@ -1,10 +1,25 @@
 # NTN-B calculadas pelo ntnb/__main__.py: uma por linha, separador ";" (ou tab), datas dd/mm/aaaa.
 #   codigo_IAM_ativo  ISIN, o mesmo código do DBSX337 (FUNDOS_DADOS_ATIVOS / fundos_cadastro_ativos)
-#   data_inicio       1º dia da série
-#   cota_inicio       cota nesse dia. Com a cota_acumulada do FUNDOS_DADOS_ATIVOS no dia, a série
-#                     continua a do banco; vazio = 1.
+#   data_inicio       1º dia da série (título emitido depois começa no 1º PU)
+#   cota, data_cota   a série reinvestindo vale "cota" em data_cota (vazia = 1º dia). Com a cota_acumulada
+#                     do FUNDOS_DADOS_ATIVOS num dia, a série continua a do banco. Sem cota, começa em 1.
 # O input/titulos_do_banco.sql gera estas linhas a partir do banco (dá para colar o resultado do SSMS).
-codigo_IAM_ativo;vencimento;data_inicio;cota_inicio
-BRSTNCNTB0O7;15/05/2035;02/01/2023;
-BRSTNCNTB3D4;15/08/2050;02/01/2023;
-BRSTNCNTB690;15/08/2060;02/01/2023;1,02795076320369
+# A cota_acumulada do banco começa em 1 na emissão (conferido na 2060: com a cota de 02/01/2023 a série
+# dá 1,000000000000003 em 12/01/2022) — título emitido depois da data_inicio deve bater sem cota.
+# ISINs das NTN-B com cupons (Selic 760199) conferidos no Mais Retorno em 14/10/2026.
+# NTN-B já vencida não entra: o Broadcast apaga o código no vencimento.
+codigo_IAM_ativo;vencimento;data_inicio;cota;data_cota
+BRSTNCNTB682;15/05/2027;04/01/2021;;
+BRSTNCNTB4X0;15/08/2028;04/01/2021;;
+BRSTNCNTB716;15/05/2029;04/01/2021;;
+BRSTNCNTB3B8;15/08/2030;04/01/2021;;
+BRSTNCNTB7X3;15/05/2031;04/01/2021;;
+BRSTNCNTB674;15/08/2032;04/01/2021;;
+BRSTNCNTB6B1;15/05/2033;04/01/2021;;
+BRSTNCNTB0O7;15/05/2035;04/01/2021;;
+BRSTNCNTB7Y1;15/05/2037;04/01/2021;;
+BRSTNCNTB3C6;15/08/2040;04/01/2021;;
+BRSTNCNTB0A6;15/05/2045;04/01/2021;;
+BRSTNCNTB3D4;15/08/2050;04/01/2021;;
+BRSTNCNTB4Q4;15/05/2055;04/01/2021;;
+BRSTNCNTB690;15/08/2060;04/01/2021;1,02795076320369;02/01/2023

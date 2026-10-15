@@ -1,5 +1,6 @@
 /*
-    Série diária de NTN-B com e sem reinvestimento do cupom — PU, VNA e taxa ANBIMA via Broadcast+.
+    Série diária de NTN-B com e sem reinvestimento do cupom — taxa indicativa e VNA ANBIMA via Broadcast+;
+    PU ANBIMA calculado pela taxa e o VNA (o feed de PU do Broadcast tem dias trocados).
     Carga: ntnb/__main__.py (--sql ou --carregar). Todas as NTN-B na mesma tabela: 1 linha por título e dia.
     Cada carga substitui a série inteira de cada título carregado.
 
@@ -7,7 +8,7 @@
         cota_acumulada       reinvestindo o cupom (mesma conta da cota_acumulada do FUNDOS_DADOS_ATIVOS)
         cota_sem_reinvestir  cupom fica em caixa, sem render
         cota_preco           só o PU (o cupom sai e não volta)
-    As três partem da cota_inicio do título (ntnb/input/titulos.csv) na data_inicio dele.
+    As três partem do mesmo valor no 1º dia do título; a escala vem da cota/data_cota de ntnb/input/titulos.csv.
 
     As casas decimais precisam acompanhar COLUNAS_SQL do ntnb/__main__.py.
     O script pode ser executado mais de uma vez.
