@@ -30,6 +30,7 @@ INDICES = ["RAFSBDRP", "RAFSBRAP"]
 ARQUIVOS = [
     ("ADJ_CLOSE_CONSTITUENTS", "ADJ.VFC.csv", "ADJ_CLOSE_CONSTITUENTS"),
     ("CORPORATE_ACTIONS", "VFA.csv", "CORPORATE_ACTIONS"),
+    ("LEVELS", "VFL.csv", "LEVELS"),  # cota (nível) diária do índice
 ]
 
 DIAS = 7
@@ -63,7 +64,7 @@ ARQUIVO_ERRO = OUTPUT_DIR / "erro_download.png"
 
 
 def pasta_local(indice: str, subpasta: str) -> Path:
-    """Pasta de destino do índice: output/<INDICE>/<INDEX|CORPORATE_ACTIONS>."""
+    """Pasta de destino do índice: output/<INDICE>/<subpasta de ARQUIVOS>."""
     return OUTPUT_DIR / indice / subpasta
 
 
@@ -172,7 +173,7 @@ def main():
     fim = date.today()
     inicio = fim - timedelta(days=DIAS)
     print(f"[período] {inicio:%d/%m/%Y} a {fim:%d/%m/%Y} (últimos {DIAS} dias)")
-    for indice in INDICES:  # output/<INDICE>/INDEX e output/<INDICE>/CORPORATE_ACTIONS
+    for indice in INDICES:  # output/<INDICE>/<subpasta> para cada item de ARQUIVOS
         for _, _, subpasta in ARQUIVOS:
             pasta_local(indice, subpasta).mkdir(parents=True, exist_ok=True)
 

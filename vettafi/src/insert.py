@@ -2,11 +2,12 @@
 Carrega na DBSX337 os arquivos que o download.py salva em output/<INDICE>/:
   - ADJ_CLOSE_CONSTITUENTS/AAAAMMDD_<INDICE>_ADJ.VFC.csv  -> dbo.rafs_composicao_indices
   - CORPORATE_ACTIONS/AAAAMMDD_<INDICE>_VFA.csv           -> dbo.rafs_corporate_actions
+  - LEVELS/AAAAMMDD_<INDICE>_VFL.csv                      -> dbo.rafs_cotas_indices
 
 Carga incremental por índice: busca no SQL a última data gravada (EFFECTIVE_DATE na
-composição, DATE_REF nas corporate actions) e regrava a partir dela (inclusive),
-apagando e reinserindo essas datas na mesma transação. Índice ainda sem dados no SQL é
-carregado desde o primeiro arquivo.
+composição, DATE_REF nas corporate actions, PRICE_DATE nas cotas) e regrava a partir
+dela (inclusive), apagando e reinserindo essas datas na mesma transação. Índice ainda
+sem dados no SQL é carregado desde o primeiro arquivo.
 
 Uso: python src/insert.py   (a partir da pasta vettafi)
 Credenciais: variáveis de ambiente SQL_LOGIN e SQL_PASSWORD (ver sql_connection.py)
@@ -43,6 +44,7 @@ class Carga:
     coluna_nome_arquivo: str  # recebe o nome do arquivo
     colunas_inteiras: List[str] = field(default_factory=list)
     coluna_data_arquivo: Optional[str] = None  # recebe a data do nome do arquivo, se houver
+    coluna_indice_arquivo: Optional[str] = None  # recebe o índice do nome do arquivo, se houver
     # as demais colunas do arquivo são texto
 
 
@@ -120,11 +122,39 @@ CORPORATE_ACTIONS = Carga(
     coluna_data_arquivo="DATE_REF",
 )
 
-CARGAS = [COMPOSICAO, CORPORATE_ACTIONS]
+# todas as colunas numéricas não inteiras do VFL são DECIMAL(38,16) na tabela
+COLUNAS_DECIMAIS_VFL = dict.fromkeys([
+    "INDEX_VALUE", "CLOSE_MARKET_CAP", "CLOSE_DIVISOR", "ADJ_MARKET_CAP", "ADJ_DIVISOR",
+    "INDEX_DIVIDEND", "DAILY_RETURN",
+], 16)
+COTAS = Carga(
+    tabela="dbo.rafs_cotas_indices",
+    subpasta="LEVELS",
+    coluna_data="PRICE_DATE",
+    margem=timedelta(days=0),  # o nome do arquivo tem a própria PRICE_DATE
+    colunas=[
+        "INDEX", "PRICE_DATE", "INDEX_CODE", "INDEX_NAME", "CURRENCY", "INDEX_VALUE",
+        "CLOSE_MARKET_CAP", "CLOSE_DIVISOR", "CLOSE_COUNT", "ADJ_MARKET_CAP", "ADJ_DIVISOR",
+        "ADJ_COUNT", "INDEX_DIVIDEND", "DAILY_RETURN", "CHANGE", "FILE_NAME",
+    ],
+    # cada arquivo traz as versões preço (P), retorno total (T) e líquido (N) do índice
+    chave=["PRICE_DATE", "INDEX_CODE"],
+    colunas_decimais=COLUNAS_DECIMAIS_VFL,
+    colunas_data=["PRICE_DATE"],
+    coluna_nome_arquivo="FILE_NAME",
+    colunas_inteiras=["CLOSE_COUNT", "ADJ_COUNT"],
+    coluna_indice_arquivo="INDEX",  # o VFL não tem a coluna INDEX
+)
+
+CARGAS = [COMPOSICAO, CORPORATE_ACTIONS, COTAS]
 
 
 def data_do_arquivo(caminho: Path) -> date:
     return datetime.strptime(caminho.name[:8], "%Y%m%d").date()
+
+
+def indice_do_arquivo(caminho: Path) -> str:
+    return caminho.name.split("_")[1]
 
 
 def ultima_data_por_indice(conn, carga: Carga) -> Dict[str, date]:
@@ -157,13 +187,15 @@ def ler_arquivo(caminho: Path, carga: Carga) -> pd.DataFrame:
         df[col] = df[col].map(lambda v, c=casas: para_decimal(v, c))
     if carga.coluna_data_arquivo:
         df[carga.coluna_data_arquivo] = data_do_arquivo(caminho)
+    if carga.coluna_indice_arquivo:
+        df[carga.coluna_indice_arquivo] = indice_do_arquivo(caminho)
     df[carga.coluna_nome_arquivo] = caminho.name
     return df[carga.colunas]
 
 
 def arquivo_necessario(caminho: Path, ultimas: Dict[str, date], margem: timedelta) -> bool:
     """Evita reler o histórico: arquivos AAAAMMDD_<INDICE>_... ."""
-    ultima = ultimas.get(caminho.name.split("_")[1])
+    ultima = ultimas.get(indice_do_arquivo(caminho))
     if ultima is None:
         return True
     return data_do_arquivo(caminho) >= ultima - margem
