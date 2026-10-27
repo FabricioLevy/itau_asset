@@ -48,6 +48,8 @@
 #   Lotes (da última data), Trades por dia e Trades (todo o histórico até a data; com --desde, desde o início
 #   da série), Avisos (da última data), Fundos e Parâmetros, com a coluna Fundo. Erro num fundo não para os
 #   outros: o fundo sai na aba Fundos com o erro.
+#   Ao lado, o mesmo nome em .html: relatório com as mesmas tabelas, gráficos e a ficha de cada ativo
+#   (html_report.py, no layout do attribution). --html regera o relatório de um .xlsx já gravado, sem o banco.
 #
 # Requisitos: ODBC Driver 18 for SQL Server, pyodbc, sqlalchemy, pandas, openpyxl.
 #
@@ -62,6 +64,7 @@
 #   python __main__.py --fundo ITAIMOBCDIFII --desde                       (mensal, desde o início do fundo)
 #   python __main__.py --fundo ITAIMOBCDIFII --desde --frequencia diaria   (todos os dias)
 #   python __main__.py --fundo ITAIMOBCDIFII --desde 01/06/2026            (a partir de uma data)
+#   python __main__.py --html output/taxa_media_historico_ITAIMOBCDIFII_20261023.xlsx   (só o relatório HTML)
 
 # ─────────────────────────────────────────────
 
@@ -674,6 +677,18 @@ def salvar_xlsx(caminho, tabelas, notas):
             ws.append([nota])
 
 
+def ler_saida(caminho):
+    """Saída .xlsx já gravada -> (tabelas, notas) com os nomes internos das colunas, para regerar o HTML sem o banco.
+    As notas ficam embaixo da aba Carteira, na coluna Fundo."""
+    abas = pd.read_excel(caminho, sheet_name=None)
+    tabelas = {aba: abas[aba].rename(columns={t: c for c, t, _ in colunas})
+               for aba, colunas in COLUNAS.items() if aba in abas}
+    carteira = tabelas.get("Carteira", pd.DataFrame(columns=["fundo", "grupo"]))
+    notas = carteira.loc[carteira["grupo"].isna(), "fundo"].dropna().astype(str).tolist()
+    tabelas["Carteira"] = carteira[carteira["grupo"].notna()].reset_index(drop=True)
+    return tabelas, notas
+
+
 def imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi):
     print(f"[INFO] {len(lotes)} lotes em aberto em {lotes['codigo'].nunique()} ativos | boleta casada em "
           f"{lotes['taxa_boleta'].notna().sum()} ({(lotes['casou_por'] == 'PU').sum()} pelo PU)")
@@ -760,7 +775,18 @@ def main(argv=None):
                     help="taxa dos CDI+: boleta (negociada, padrão) ou vcra (pelo PU pago); %%CDI usa sempre a boleta")
     ap.add_argument("--cdi", type=float, help="CDI em %% a.a. para converter %%CDI em CDI+ equivalente "
                                                "(padrão: CDIAcumulado da FUNDOS_DADOS_INDICES na data de cada fundo)")
+    ap.add_argument("--html", metavar="XLSX", help="só regera o relatório HTML de uma saída .xlsx já gravada, sem "
+                                                   "consultar o banco (grava o .html ao lado do .xlsx)")
     args = ap.parse_args(argv)
+    sys.path.insert(0, AQUI)
+    import html_report
+    if args.html:
+        try:
+            tabelas, notas = ler_saida(args.html)
+        except (OSError, ValueError) as e:
+            ap.error(f"--html: {e}")
+        print(f"[OK] {html_report.gerar_html(os.path.splitext(args.html)[0] + '.html', tabelas, notas)}")
+        return
     if args.cdi is not None and not 1 < args.cdi < 50:
         ap.error("--cdi em % a.a. (ex.: 13.65)")
     for fundo in args.fundo or []:
@@ -791,7 +817,6 @@ def main(argv=None):
     print(f"[INFO] {len(fundos)} fundo(s) | tipos incluídos: {', '.join(t for t, s in tipos.items() if s)} | "
           f"taxa dos CDI+: {args.fonte}{f' | série {serie}' if serie else ''}")
 
-    sys.path.insert(0, AQUI)
     from sql_connection import disconnect, get_connection, query
     try:
         get_connection()
@@ -915,6 +940,7 @@ def main(argv=None):
         salvar_xlsx(xlsx, tabelas, notas)
     except PermissionError:
         sys.exit(f"[ERRO] não deu para gravar {xlsx}: o arquivo está aberto no Excel?")
+    html = html_report.gerar_html(os.path.splitext(xlsx)[0] + ".html", tabelas, notas)
 
     print(f"\n── Resumo {'─' * 40}")
     for r in resumo:
@@ -922,6 +948,7 @@ def main(argv=None):
         quando = f" em {r['data']:%d/%m/%Y}" if etiqueta == "OK" else ""
         print(f"[{etiqueta}] {r['fundo']}{quando}: {texto}")
     print(f"[OK] {xlsx}")
+    print(f"[OK] {html}")
     if any(r["status"].startswith("erro") for r in resumo):
         sys.exit(1)
 

@@ -2,7 +2,7 @@
 %% Seta cheia = chamada ou dado passado; seta tracejada = leitura de arquivo ou de tabela.
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
@@ -73,9 +73,15 @@ flowchart LR
         fnBr["_br(x, casas)<br/>1.234,56"]
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
         fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
+        fnLerSaida["ler_saida(caminho)<br/>→ tabelas · notas<br/>relê um .xlsx gravado"]
+    end
+
+    subgraph HTML["html_report.py"]
+        fnHtml["gerar_html(caminho,<br/>tabelas, notas)<br/>abas · gráficos SVG<br/>tabelas com filtro<br/>ficha de cada ativo"]
     end
 
     arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes<br/>Trades por dia · Trades<br/>Avisos · Fundos · Parâmetros")]
+    arqHtml[("Saída: o mesmo nome<br/>em .html<br/>FUNDOS · RESUMO<br/>HISTÓRICO · ATIVOS<br/>LOTES · TRADES<br/>AVISOS · METODOLOGIA")]
     console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · trades<br/>resumo por fundo"])
 
     cli --> fnMain
@@ -134,6 +140,11 @@ flowchart LR
 
     fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
     fnXlsx --> arqXlsx
+    fnMain -->|"as mesmas tabelas e notas"| fnHtml
+    fnHtml --> arqHtml
+    fnMain -->|"--html: sem o banco"| fnLerSaida
+    arqXlsx -.-> fnLerSaida
+    fnLerSaida --> fnHtml
     fnMain --> fnImp
     fnMain --> fnSit
     fnMain --> fnImpTrades

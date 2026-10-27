@@ -5,10 +5,11 @@ Documentação do `taxa_media/__main__.py`: o que o script calcula, de onde vêm
 ```
 taxa_media/
 ├── __main__.py           script
+├── html_report.py        relatório HTML (mesmo layout do attribution)
 ├── sql_connection.py     conexão com o DBSX337
 ├── input/fundos.xlsx     fundos, tipos de papel e correções manuais
 ├── sql/taxa_media.sql    o mesmo cálculo em T-SQL, para um fundo no SSMS
-├── output/               Excel gerado
+├── output/               Excel e relatório HTML gerados
 └── doc/
     ├── taxa_media.md     esta documentação
     └── fluxograma.mmd    relações do código (Mermaid)
@@ -31,6 +32,8 @@ Com `--desde`, o mesmo cálculo é refeito em cada data desde o início do fundo
 
 Além da carteira, o script mostra os trades: cada compra e venda, com a taxa pelas mesmas regras dos lotes, e a taxa média dos trades de cada dia, por fundo (seção 6.15).
 
+Junto com o Excel sai um relatório HTML com as mesmas tabelas, gráficos e a ficha de cada ativo (seção 2, Relatório HTML).
+
 ## 2. Como rodar
 
 O script precisa rodar numa máquina com acesso ao DBSX337 (servidor SQNPRC028). A conexão é a do `sql_connection.py` da pasta e exige:
@@ -48,6 +51,7 @@ python __main__.py --fundo ITAIMOBCDIFII    (só esse fundo; tipos e correções
 python __main__.py --fonte vcra --cdi 13.65
 python __main__.py --fundo ITAIMOBCDIFII --desde            (série mensal desde o início do fundo)
 python __main__.py --desde 01/06/2026 --frequencia diaria   (série diária a partir de 01/06/2026)
+python __main__.py --html output/taxa_media_historico_ITAIMOBCDIFII_20261023.xlsx   (só o relatório HTML)
 ```
 
 | Parâmetro | Padrão | O que faz |
@@ -59,12 +63,13 @@ python __main__.py --desde 01/06/2026 --frequencia diaria   (série diária a pa
 | `--frequencia` | `mensal` | datas da série: `mensal` (a última data com posição de cada mês) ou `diaria` (todas as datas com posição). Só vale com `--desde` |
 | `--fonte` | `boleta` | taxa dos CDI+: `boleta` (negociada) ou `vcra` (custódia, calculada pelo PU pago). Os %CDI usam sempre a boleta |
 | `--cdi` | `CDIAcumulado` da `FUNDOS_DADOS_INDICES` na data de cada fundo | CDI em % a.a., usado só para converter %CDI em CDI+ equivalente |
+| `--html` | — | só regera o relatório HTML de um `.xlsx` já gravado, sem o banco e sem o Excel de entrada; o `.html` sai ao lado do `.xlsx`. Serve para gerar o relatório numa máquina sem acesso ao DBSX337 |
 
 Sem o Excel, o script só roda com `--fundo`; nesse caso usa os tipos padrão (seção 3) e nenhuma correção.
 
 ### Saída
 
-Cada rodada grava um Excel em `output/`. O nome é `taxa_media_<aaaammdd>.xlsx`, ou `taxa_media_<fundo>_<aaaammdd>.xlsx` quando roda um fundo só. Com `--desde`, o nome começa com `taxa_media_historico`. A data é a do `--data` ou a mais recente entre os fundos. Todas as abas têm a coluna Fundo:
+Cada rodada grava um Excel em `output/` e, ao lado, o relatório HTML com o mesmo nome (abaixo). O nome é `taxa_media_<aaaammdd>.xlsx`, ou `taxa_media_<fundo>_<aaaammdd>.xlsx` quando roda um fundo só. Com `--desde`, o nome começa com `taxa_media_historico`. A data é a do `--data` ou a mais recente entre os fundos. Todas as abas têm a coluna Fundo:
 
 | Aba | Conteúdo |
 |---|---|
@@ -81,6 +86,32 @@ Cada rodada grava um Excel em `output/`. O nome é `taxa_media_<aaaammdd>.xlsx`,
 No console sai um bloco por fundo, com os avisos, o resultado de cada grupo e uma linha com os trades do período, e no fim um resumo com uma linha por fundo. Com `--desde`, o bloco começa com uma linha por data da série.
 
 Um erro num fundo (sem posição na data, consulta vazia) não para os outros: o fundo aparece na aba Fundos com o erro, e o script termina com código de saída 1.
+
+### Relatório HTML
+
+Ao lado do Excel sai um `.html` com o mesmo nome, gerado pelo `html_report.py` no layout do relatório do attribution: cabeçalho Itaú, abas no topo, tabelas que ordenam no clique e gráficos com tooltip. É um arquivo só, sem dependências: abre em qualquer navegador e pode ser mandado por e-mail. O relatório usa as mesmas tabelas do Excel, por isso o `--html` regera exatamente o mesmo relatório a partir de um `.xlsx` gravado.
+
+| Aba | O que mostra |
+|---|---|
+| FUNDOS | só com mais de um fundo: a taxa da carteira de cada fundo em barras e a tabela da aba Fundos. Clicar num fundo abre o resumo dele |
+| RESUMO | cartões com a taxa da carteira (com a evolução, se houver série), %CDI, CDI+, financeiro e avisos. Abaixo, a composição do financeiro por grupo e a cascata de contribuição de cada ativo para a taxa da carteira. Depois, a tabela por grupo e os cartões de compras e vendas do período |
+| HISTÓRICO | só com `--desde`: taxa da carteira e spread dos CDI+ num painel, taxa dos %CDI em outro e financeiro por grupo num terceiro, todos no mesmo eixo de datas. Um resumo do período e a tabela, uma linha por data. Um dia fora da curva (o começo do fundo, com um ou dois ativos) não achata o gráfico: a escala ignora os extremos (percentis 3% e 97%), a linha é cortada na borda e o painel avisa quantos valores ficaram fora |
+| ATIVOS | taxa de cada ativo em CDI+ equivalente (barras, com a linha da carteira) e o peso dele no financeiro. Na tabela, também a contribuição de cada ativo: peso × taxa em CDI+ equivalente. A soma das contribuições é a taxa da carteira |
+| LOTES | quantos lotes têm a taxa da boleta, da VCRA, manual ou nenhuma, e a dispersão boleta × VCRA de cada grupo. Na diagonal as duas taxas são iguais; os lotes com aviso Boleta × VCRA saem em vermelho, com o código. Depois, a tabela de lotes em aberto |
+| TRADES | cartões de compras e vendas, o gráfico da taxa média de cada dia (com a taxa da carteira como referência, se houver série) e do financeiro do dia, a tabela Trades por dia e a tabela de cada trade |
+| AVISOS | um cartão por tipo de aviso, com o que ele quer dizer, e a tabela de avisos |
+| METODOLOGIA | como navegar, glossário, a aba Parâmetros e as notas |
+
+Para navegar:
+
+- Com mais de um fundo, o seletor à direita das abas troca o fundo em todas as abas.
+- Cada tabela tem busca por texto, sem acento nem caixa, e seletores (grupo, fonte da taxa, operação, tipo de aviso). O contador mostra quantas linhas sobraram.
+- Clicar num ativo, numa tabela ou num gráfico, abre a ficha dele: cartões com taxa, financeiro, peso e quantidades, e os lotes, trades e avisos do ativo.
+- Na aba TRADES, clicar num dia, no gráfico ou na tabela Trades por dia, filtra a tabela de trades. O botão do dia limpa o filtro.
+- Os cartões com contagem (fonte da taxa, tipo de aviso, compras, vendas) também filtram a tabela da aba.
+- Nos gráficos de série, o tooltip mostra todas as séries na data mais próxima do mouse, e as caixas da legenda escondem uma linha.
+
+As cores seguem a entidade em todo o relatório: carteira laranja, CDI+ azul e %CDI roxo, o mesmo trio do attribution. Compras ficam em verde-azulado e vendas em framboesa. As duas combinações (carteira, CDI+ e %CDI; carteira, compras e vendas) passam no teste de separação para daltonismo.
 
 ### Versão em SQL
 
@@ -412,7 +443,7 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 
 | Função | O que faz | Devolve |
 |---|---|---|
-| `main(argv)` | lê os argumentos e o Excel, roda os fundos um a um (com `--desde`, cada data da série), imprime e grava o Excel | — |
+| `main(argv)` | lê os argumentos e o Excel, roda os fundos um a um (com `--desde`, cada data da série), imprime e grava o Excel e o HTML; com `--html`, só regera o HTML | — |
 | `carregar_entrada(caminho)` | lê as abas Fundos, Tipos e Correções | fundos, tipos, correções |
 | `_aba(abas, nome, colunas, caminho)` | pega uma aba e confere as colunas | DataFrame ou `None` |
 | `_chave`, `_sim`, `_texto`, `_numero` | nome sem acento; S/N; texto limpo; número com vírgula ou ponto | — |
@@ -443,8 +474,22 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 | `imprimir_trades(trades, relancamentos)` | linha dos trades do fundo no console | — |
 | `_situacao(r)` | linha do console de uma data da série ou de um fundo no resumo | etiqueta e texto |
 | `salvar_xlsx(caminho, tabelas, notas)` | grava o Excel com as colunas e formatos de `COLUNAS` | — |
+| `ler_saida(caminho)` | relê um `.xlsx` gravado, com os nomes internos das colunas, para o `--html` | tabelas, notas |
 | `_br(x, casas)` | número no formato brasileiro (1.234,56) | texto |
 | `_cdi_mais(x)` | taxa no formato CDI+x / CDI−x | texto |
+
+O `html_report.py` não importa nada do `__main__` nem do attribution: recebe as tabelas do Excel e devolve o arquivo.
+
+| Função (`html_report.py`) | O que faz |
+|---|---|
+| `gerar_html(caminho, tabelas, notas)` | monta a página: cabeçalho, abas, um bloco por fundo em cada aba, a ficha dos ativos (JSON) e o CSS/JS embutidos |
+| `_preparar_fundo(t, info)` | separa as tabelas de um fundo e acrescenta peso, contribuição, avisos por ativo, emissão na convenção do grupo e "sem taxa" na fonte vazia |
+| `_aba_resumo`, `_aba_historico`, `_aba_ativos`, `_aba_lotes`, `_aba_trades`, `_aba_avisos` | o conteúdo de cada aba de um fundo |
+| `_aba_fundos`, `_aba_metodologia` | as abas gerais (FUNDOS só com mais de um fundo) |
+| `_grafico_serie(cid, datas, paineis, ...)` | série no tempo em painéis com o mesmo eixo X (linhas, pontos e barras empilhadas), crosshair e escala sem os extremos |
+| `_barras_h`, `_cascata`, `_dispersao`, `_barra_composicao`, `_sparkline` | barras por ativo ou fundo, cascata de contribuição, boleta × VCRA, composição por grupo e a mini série do cartão |
+| `_tabela(df, colunas, ...)`, `_filtros(tid, ...)` | tabela ordenável (cada célula leva o valor cru para a ordenação) e a barra de busca e seletores |
+| `_fichas(f)` | cabeçalho e cartões da ficha de cada ativo; as tabelas da ficha são copiadas das abas no navegador |
 
 Os dois diagramas abaixo estão em Mermaid. O GitHub e o GitLab mostram o desenho direto; no VS Code, o preview de Markdown precisa da extensão Markdown Preview Mermaid Support.
 
@@ -499,7 +544,7 @@ flowchart TD
     tbIdx[("FUNDOS_DADOS_INDICES<br/>CDIAcumulado ou --cdi")] --> eqPct
     eqCdi --> cart["Médias ponderadas pelo financeiro<br/>CDI+ em spread · %CDI em % do CDI<br/>Carteira em CDI+ equivalente"]
     eqPct --> cart
-    cart --> saida[("Excel com todos os fundos<br/>+ console<br/>trades por dia e por trade<br/>com --desde, uma linha por<br/>data na aba Histórico")]
+    cart --> saida[("Excel e relatório HTML<br/>com todos os fundos<br/>+ console<br/>trades por dia e por trade<br/>com --desde, uma linha por<br/>data na aba Histórico")]
     mediaDia --> saida
 ```
 
@@ -510,7 +555,7 @@ O mesmo diagrama está em `doc/fluxograma.mmd`, para abrir em editores de Mermai
 ```mermaid
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
@@ -581,9 +626,15 @@ flowchart LR
         fnBr["_br(x, casas)<br/>1.234,56"]
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
         fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
+        fnLerSaida["ler_saida(caminho)<br/>→ tabelas · notas<br/>relê um .xlsx gravado"]
+    end
+
+    subgraph HTML["html_report.py"]
+        fnHtml["gerar_html(caminho,<br/>tabelas, notas)<br/>abas · gráficos SVG<br/>tabelas com filtro<br/>ficha de cada ativo"]
     end
 
     arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes<br/>Trades por dia · Trades<br/>Avisos · Fundos · Parâmetros")]
+    arqHtml[("Saída: o mesmo nome<br/>em .html<br/>FUNDOS · RESUMO<br/>HISTÓRICO · ATIVOS<br/>LOTES · TRADES<br/>AVISOS · METODOLOGIA")]
     console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · trades<br/>resumo por fundo"])
 
     cli --> fnMain
@@ -642,6 +693,11 @@ flowchart LR
 
     fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
     fnXlsx --> arqXlsx
+    fnMain -->|"as mesmas tabelas e notas"| fnHtml
+    fnHtml --> arqHtml
+    fnMain -->|"--html: sem o banco"| fnLerSaida
+    arqXlsx -.-> fnLerSaida
+    fnLerSaida --> fnHtml
     fnMain --> fnImp
     fnMain --> fnSit
     fnMain --> fnImpTrades
@@ -690,3 +746,12 @@ Os trades (seção 6.15) foram testados no mesmo dia, com o banco simulado, e o 
 - com `--desde 01/09/2026`, os trades começam em 01/09.
 
 Os trades ainda não rodaram no banco de verdade.
+
+O relatório HTML também foi testado em 27/10/2026, com o banco simulado e as três vendas acima. Foram três execuções: três fundos com série diária (um deles sem posição), um fundo com série mensal e um fundo numa data só. O teste confirmou estes pontos:
+
+- cada execução grava o `.xlsx` e o `.html`. O `--html` relido do `.xlsx` gera um arquivo idêntico ao da execução;
+- no Edge, as abas, a troca de fundo, a ficha do ativo (aberta pela tabela ou pelo gráfico), a busca, os seletores, a ordenação, o clique num dia de trade, os cartões de aviso e os tooltips funcionam sem erro de JavaScript;
+- o fundo sem posição aparece com o erro em todas as abas. Um fundo sem lotes, trades nem avisos mostra as mensagens de vazio, e os dados na memória (datas como `datetime.date`, boleta válida como `bool`) também funcionam;
+- a dispersão boleta × VCRA mostra em vermelho os 5 lotes de CDI+ com o aviso Boleta × VCRA: L3971, K965290, K404275, K614228 e K993357.
+
+O relatório ainda não foi gerado com dados do banco de verdade.
