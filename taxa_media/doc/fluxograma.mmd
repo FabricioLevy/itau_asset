@@ -1,0 +1,111 @@
+%% Relações do código do taxa_media/__main__.py (o mesmo diagrama da seção 11 do taxa_media.md)
+%% Seta cheia = chamada ou dado passado; seta tracejada = leitura de arquivo ou de tabela.
+flowchart LR
+    subgraph ENT["Entradas"]
+        cli(["Linha de comando<br/>--entrada · --fundo · --data · --fonte · --cdi"])
+        xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
+    end
+
+    fnMain["main(argv)<br/>argparse · valida --fundo e --cdi<br/>um fundo por vez: erro num fundo não para os outros"]
+
+    subgraph LEITURA["Leitura do Excel"]
+        fnEntrada["carregar_entrada(caminho)<br/>→ fundos · tipos · correções<br/>sem aba Tipos: TIPOS_PADRAO"]
+        fnAba["_aba(abas, nome, colunas, caminho)"]
+        fnAux["_chave · _sim · _texto · _numero"]
+    end
+
+    subgraph CARGA["Carga do banco · NOLOCK"]
+        fnFundo["carregar_fundo(query, fundo, data, tipos)<br/>→ vcra · boletas · posicao · data<br/>sem --data: última data da posição"]
+        fnCdi["carregar_cdi(query, data)<br/>→ CDI a.a. e origem<br/>uma vez por data, sem --cdi"]
+        sqlUlt["SQL_ULTIMA_DATA"]
+        sqlVcra["SQL_VCRA<br/>todos os tipos · C e V · DT até a data"]
+        fnLista["_lista_sql(valores)"]
+        sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>até a data + JANELA_BOLETA"]
+        sqlPos["SQL_POSICAO<br/>Fixed Income · DIAS_PU dias"]
+        sqlCdi["SQL_CDI<br/>CDIAcumulado · pnl_perc"]
+        fnConsulta["_consulta(query, sql, nome, obrigatoria)<br/>resultado vazio = erro, menos nas boletas"]
+    end
+
+    subgraph CONN["sql_connection.py"]
+        cnGet["get_connection()"]
+        cnQuery["query(sql)<br/>pd.read_sql → DataFrame"]
+        cnDisc["disconnect()"]
+    end
+
+    subgraph DB["DBSX337"]
+        tbPos[("VW_FUNDOS_POSICAO")]
+        tbVcra[("VCRAOPRF")]
+        tbFo[("FUNDOS_OPERACOES")]
+        tbIdx[("FUNDOS_DADOS_INDICES")]
+    end
+
+    subgraph CALC["Cálculo de um fundo"]
+        fnCalc["calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos)<br/>→ lotes · ativos · carteira · avisos<br/>ordena os avisos por ORDEM_AVISOS"]
+        fnNorm["_normalizar(df, textos, datas, numeros)"]
+        fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador CDI"]
+        fnLotes["montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos)<br/>→ lotes em aberto<br/>grupo · boleta válida (LIMITE_CONVENCAO) · taxa usada<br/>correções · aviso Boleta × VCRA (DIVERGENCIA)"]
+        fnCasar["casar_boletas(compras, boletas)<br/>JANELA_BOLETA · TOLERANCIA_PU"]
+        fnAtivos["montar_ativos(lotes, posicao, data, cdi, cdi_d, fora, avisos)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
+        fnCons["consolidar(ativos)<br/>→ carteira: grupos e CARTEIRA"]
+        fnResumo["_resumo(grupo, g)"]
+        fnMedia["_media_ponderada(df, chave, valor, peso)"]
+        fnAviso["_aviso(avisos, aviso, ativo, detalhe, lote)"]
+    end
+
+    subgraph FMT["Console e Excel"]
+        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)"]
+        fnBr["_br(x, casas)<br/>1.234,56"]
+        fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
+        fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS"]
+    end
+
+    arqXlsx[("Saída: output/taxa_media_AAAAMMDD.xlsx<br/>Carteira · Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
+    console(["Saída: console<br/>[INFO] · [OK] · [AVISO] · [ERRO]<br/>resumo por fundo"])
+
+    cli --> fnMain
+    fnMain -->|"--entrada"| fnEntrada
+    xlsxIn -.-> fnEntrada
+    fnEntrada --> fnAba
+    fnEntrada --> fnAux
+    fnAba --> fnAux
+    fnMain -->|"antes dos fundos"| cnGet
+
+    fnMain -->|"para cada fundo: fundo, data, tipos"| fnFundo
+    fnMain -->|"data do fundo"| fnCdi
+    fnFundo --> sqlUlt & sqlVcra & sqlBol & sqlPos
+    fnFundo --> fnLista
+    fnLista -->|"códigos"| sqlBol
+    fnCdi --> sqlCdi
+    sqlUlt & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
+    fnConsulta --> cnQuery
+    fnMain -->|"no fim, sempre"| cnDisc
+    sqlUlt -.-> tbPos
+    sqlPos -.-> tbPos
+    sqlVcra -.-> tbVcra
+    sqlBol -.-> tbFo
+    sqlCdi -.-> tbIdx
+
+    fnMain -->|"dados do fundo, cdi, fonte, correções do fundo, tipos"| fnCalc
+    fnCalc --> fnNorm
+    fnCalc -->|"1 · vcra"| fnEscopo
+    fnCalc -->|"2 · VCRA no escopo, boletas"| fnLotes
+    fnCalc -->|"3 · lotes, posicao, fora"| fnAtivos
+    fnCalc -->|"4 · ativos"| fnCons
+    fnEscopo --> fnAviso
+    fnLotes --> fnCasar
+    fnLotes --> fnMedia
+    fnAtivos --> fnMedia
+    fnLotes --> fnAviso
+    fnAtivos --> fnAviso
+    fnLotes --> fnBr
+    fnAtivos --> fnBr
+    fnCons --> fnResumo
+
+    fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
+    fnXlsx --> arqXlsx
+    fnMain --> fnImp
+    fnImp --> fnBr
+    fnImp --> fnCdiMais
+    fnCdiMais --> fnBr
+    fnImp --> console
+    fnMain -->|"resumo e erros"| console
