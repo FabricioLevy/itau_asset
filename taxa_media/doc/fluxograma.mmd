@@ -52,24 +52,31 @@ flowchart LR
         fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador CDI"]
         fnLotes["montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos)<br/>→ lotes em aberto<br/>grupo · boleta válida (LIMITE_CONVENCAO) · taxa usada<br/>correções · aviso Boleta × VCRA (DIVERGENCIA)"]
         fnCasar["casar_boletas(compras, boletas)<br/>JANELA_BOLETA · TOLERANCIA_PU"]
-        fnAtivos["montar_ativos(lotes, posicao, data, cdi, cdi_d, fora, avisos)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
+        fnAtivos["montar_ativos(lotes, posicao, data, cdi, fora, avisos)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
         fnCons["consolidar(ativos)<br/>→ carteira: grupos e CARTEIRA"]
         fnResumo["_resumo(grupo, g)"]
         fnMedia["_media_ponderada(df, chave, valor, peso)"]
         fnAviso["_aviso(avisos, aviso, ativo, detalhe, lote)"]
         fnResumoData["resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)<br/>→ linha das abas Fundos e Histórico"]
+        fnRegra["_taxa_usada<br/>_vcra_na_convencao<br/>_em_cdi_mais<br/>regra da taxa e conversões,<br/>comuns a lotes e trades"]
+    end
+
+    subgraph TRADES["Trades"]
+        fnTrades["calcular_trades(vcra,<br/>boletas, fonte, correcoes,<br/>tipos, cdi_do_dia)<br/>→ trades · relançamentos<br/>C e V do escopo, sem<br/>relançamento (X → XA)"]
+        fnTradesDia["trades_por_dia(trades)<br/>→ média por dia<br/>e operação"]
     end
 
     subgraph FMT["Console e Excel"]
         fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)<br/>detalhe da data de referência"]
         fnSit["_situacao(r)<br/>linha de cada data da série e do resumo"]
+        fnImpTrades["imprimir_trades(trades, relancamentos)<br/>linha dos trades no console"]
         fnBr["_br(x, casas)<br/>1.234,56"]
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
         fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
     end
 
-    arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
-    console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · resumo<br/>por fundo"])
+    arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes<br/>Trades por dia · Trades<br/>Avisos · Fundos · Parâmetros")]
+    console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · trades<br/>resumo por fundo"])
 
     cli --> fnMain
     fnMain --> fnArgs
@@ -113,12 +120,23 @@ flowchart LR
     fnLotes --> fnBr
     fnAtivos --> fnBr
     fnCons --> fnResumo
+    fnLotes --> fnRegra
+    fnAtivos --> fnRegra
+    fnMain -->|"VCRA e boletas até a data, fonte, correções, tipos"| fnTrades
+    fnTrades --> fnNorm
+    fnTrades --> fnEscopo
+    fnTrades --> fnCasar
+    fnTrades --> fnRegra
+    fnTrades -->|"CDI do dia"| fnCdiData
+    fnMain -->|"trades do período"| fnTradesDia
+    fnTradesDia --> fnMedia
     fnMain -->|"lotes, ativos, carteira, avisos da data"| fnResumoData
 
     fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
     fnXlsx --> arqXlsx
     fnMain --> fnImp
     fnMain --> fnSit
+    fnMain --> fnImpTrades
     fnImp --> fnBr
     fnImp --> fnCdiMais
     fnSit --> fnCdiMais
@@ -126,4 +144,7 @@ flowchart LR
     fnCdiMais --> fnBr
     fnImp --> console
     fnSit --> console
+    fnImpTrades --> fnCdiMais
+    fnImpTrades --> fnBr
+    fnImpTrades --> console
     fnMain -->|"erros"| console

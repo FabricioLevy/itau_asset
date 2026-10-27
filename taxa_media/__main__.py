@@ -39,10 +39,14 @@
 #   série     com --desde, o mesmo cálculo em cada data (a última de cada mês ou, com --frequencia diaria,
 #             todas as datas com posição), só com o que existia nela: VCRA e boletas até a data, PU dos
 #             DIAS_PU dias anteriores e CDI do dia.
+#   trades    cada compra e venda da VCRA no escopo, com a taxa pelas mesmas regras dos lotes, e a média por
+#             dia e operação, ponderada pelo financeiro do trade (qtd x PU da operação). Relançamento da VCRA
+#             (venda do lote X + compra do lote XA no mesmo PU) não é trade.
 #
 # Saída: output/taxa_media_<aaaammdd>.xlsx (com um fundo só, taxa_media_<fundo>_<aaaammdd>.xlsx; com --desde,
-#   taxa_media_historico_...) — abas Histórico (só com --desde: uma linha por fundo e data), Carteira, Ativos,
-#   Lotes e Avisos (da última data), Fundos e Parâmetros, com a coluna Fundo. Erro num fundo não para os
+#   taxa_media_historico_...) — abas Histórico (só com --desde: uma linha por fundo e data), Carteira, Ativos e
+#   Lotes (da última data), Trades por dia e Trades (todo o histórico até a data; com --desde, desde o início
+#   da série), Avisos (da última data), Fundos e Parâmetros, com a coluna Fundo. Erro num fundo não para os
 #   outros: o fundo sai na aba Fundos com o erro.
 #
 # Requisitos: ODBC Driver 18 for SQL Server, pyodbc, sqlalchemy, pandas, openpyxl.
@@ -356,6 +360,31 @@ def casar_boletas(compras, boletas):
     return compras.join(m[novas])
 
 
+def _taxa_usada(df, fonte):
+    """(boleta válida, taxa usada, fonte da taxa) de cada lote ou trade, a partir de grupo, taxa_boleta e
+    taxa_vcra: o %CDI só usa a boleta; o CDI+ usa a boleta (fonte boleta) ou a VCRA, e a VCRA sem boleta válida."""
+    cdi_mais = df["grupo"] == "CDI+"
+    boleta_ok = np.where(cdi_mais, df["taxa_boleta"] < LIMITE_CONVENCAO, df["taxa_boleta"] >= LIMITE_CONVENCAO)
+    usa_boleta = boleta_ok & (~cdi_mais | (fonte == "boleta"))
+    return (boleta_ok, np.where(usa_boleta, df["taxa_boleta"], np.where(cdi_mais, df["taxa_vcra"], np.nan)),
+            np.where(usa_boleta, "boleta", np.where(cdi_mais, "VCRA", "")))
+
+
+def _vcra_na_convencao(df, cdi_d):
+    """Taxa da VCRA na convenção do grupo, para comparar com a boleta: no CDI+, o próprio VL_JUROSOPER; no %CDI,
+    o % do CDI que rende o mesmo que IDDIR_PC% do CDI + o spread da VCRA, com CDI flat. cdi_d = CDI diário (um
+    número, ou um por linha)."""
+    p, s = df["perc_cdi"] / 100, df["taxa_vcra"] / 100
+    return np.where(df["grupo"] == "CDI+", df["taxa_vcra"], ((1 + p * cdi_d) * (1 + s) ** (1 / 252) - 1) / cdi_d * 100)
+
+
+def _em_cdi_mais(grupo, taxa, cdi):
+    """Taxa em CDI+ equivalente: a própria no CDI+; no %CDI, o spread sobre 100% do CDI que rende o mesmo em um
+    ano, com CDI flat. cdi = CDI a.a. em fração (um número, ou um por linha)."""
+    cdi_d = (1 + cdi) ** (1 / 252) - 1
+    return np.where(grupo == "CDI+", taxa, ((1 + taxa / 100 * cdi_d) ** 252 / (1 + cdi) - 1) * 100)
+
+
 def montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos):
     """Lotes em aberto da VCRA (compras - vendas do mesmo CD) com a boleta casada, o grupo e a taxa usada."""
     compras = casar_boletas(vcra[vcra["op"] == "C"].reset_index(drop=True), boletas)
@@ -382,18 +411,8 @@ def montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos):
 
     # CDI+ tem spread de emissão; %CDI tem a emissão no IDDIR_PC (o mesmo grupo em todos os lotes do ativo)
     lotes["grupo"] = np.where(lotes.groupby("codigo")["taxa_emissao"].transform("max") > 0, "CDI+", "%CDI")
-    cdi_mais = lotes["grupo"] == "CDI+"
-    lotes["boleta_ok"] = np.where(cdi_mais, lotes["taxa_boleta"] < LIMITE_CONVENCAO,
-                                  lotes["taxa_boleta"] >= LIMITE_CONVENCAO)
-    usa_boleta = lotes["boleta_ok"] & (~cdi_mais | (fonte == "boleta"))
-    lotes["taxa"] = np.where(usa_boleta, lotes["taxa_boleta"], np.where(cdi_mais, lotes["taxa_vcra"], np.nan))
-    lotes["fonte_taxa"] = np.where(usa_boleta, "boleta", np.where(cdi_mais, "VCRA", ""))
-
-    # VCRA na convenção do grupo, para comparar com a boleta: no %CDI, o % do CDI que rende o mesmo que
-    # IDDIR_PC% do CDI + o spread da VCRA, com CDI flat
-    p, s = lotes["perc_cdi"] / 100, lotes["taxa_vcra"] / 100
-    lotes["taxa_vcra_conv"] = np.where(cdi_mais, lotes["taxa_vcra"],
-                                       ((1 + p * cdi_d) * (1 + s) ** (1 / 252) - 1) / cdi_d * 100)
+    lotes["boleta_ok"], lotes["taxa"], lotes["fonte_taxa"] = _taxa_usada(lotes, fonte)
+    lotes["taxa_vcra_conv"] = _vcra_na_convencao(lotes, cdi_d)
     lotes["dif_boleta_vcra"] = (lotes["taxa_boleta"] - lotes["taxa_vcra_conv"]).where(lotes["boleta_ok"])
 
     for cd, (taxa, motivo) in correcoes.items():
@@ -422,7 +441,7 @@ def montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos):
     return abertos
 
 
-def montar_ativos(lotes, posicao, data, cdi, cdi_d, fora, avisos):
+def montar_ativos(lotes, posicao, data, cdi, fora, avisos):
     """Taxa média por ativo (lotes ponderados pela quantidade), conferência com a quantidade da posição e
     financeiro pelo último PU com preço. fora: {codigo: motivo} dos ativos fora do escopo."""
     l = lotes.assign(sem_boleta=~lotes["boleta_ok"], manual=lotes["fonte_taxa"] == "manual",
@@ -444,9 +463,7 @@ def montar_ativos(lotes, posicao, data, cdi, cdi_d, fora, avisos):
     a["dt_pu"] = precos["data"].reindex(a.index)
     a["dif_qt"] = a["qt_lotes"].fillna(0) - a["qt_posicao"].fillna(0)
     a["financeiro"] = a["qt_lotes"] * a["pu"]
-    q = a["taxa_media"] / 100
-    a["taxa_cdi_mais"] = np.where(a["grupo"] == "CDI+", a["taxa_media"],
-                                  ((1 + q * cdi_d) ** 252 / (1 + cdi) - 1) * 100)
+    a["taxa_cdi_mais"] = _em_cdi_mais(a["grupo"], a["taxa_media"], cdi)
     a = a.rename_axis("codigo").reset_index().sort_values(["grupo", "codigo"], na_position="last")
 
     for r in a.itertuples():
@@ -499,7 +516,7 @@ def calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos):
     cdi_d = (1 + cdi) ** (1 / 252) - 1
     vcra, fora = filtrar_escopo(vcra, tipos, avisos)
     lotes = montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos)
-    ativos = montar_ativos(lotes, posicao, data, cdi, cdi_d, fora, avisos)
+    ativos = montar_ativos(lotes, posicao, data, cdi, fora, avisos)
     avisos.sort(key=lambda av: ORDEM_AVISOS.index(av["aviso"]))
     return lotes, ativos, consolidar(ativos), avisos
 
@@ -515,6 +532,61 @@ def resumo_da_data(data, cdi, lotes, ativos, carteira, avisos):
             "n_lotes": len(lotes), "n_ativos": int(ativos["qt_lotes"].notna().sum()), "cdi": cdi * 100,
             "n_avisos": len(avisos),
             "avisos": " · ".join(f"{a} ({n})" for a, n in Counter(av["aviso"] for av in avisos).items())}
+
+
+def calcular_trades(vcra, boletas, fonte, correcoes, tipos, cdi_do_dia):
+    """Trades de um fundo: cada compra e venda da VCRA no escopo, com a boleta casada e a taxa pelas mesmas
+    regras dos lotes. Relançamento da VCRA (venda do lote X e compra do lote X + "A", mesmo ativo, quantidade e
+    PU, até JANELA_BOLETA dias depois) não é trade e fica fora; a correção do lote relançado vale para a compra
+    original. cdi_do_dia(data) = CDI a.a. (fração) do dia do trade. Devolve (trades, número de relançamentos)."""
+    vcra = _normalizar(vcra, textos=("CD", "codigo", "op", "isin", "tipo", "indexador"), datas=("data",),
+                       numeros=("qt", "pu", "perc_cdi", "taxa_emissao", "taxa_vcra"))
+    vcra["qt"] = vcra["qt"].abs()
+    if not boletas.empty:
+        boletas = _normalizar(boletas, textos=("codigo",), datas=("data",), numeros=("qt", "pu", "taxa"))
+    vcra = filtrar_escopo(vcra, tipos, [])[0].reset_index(drop=True)  # os avisos de escopo já saem no calcular
+
+    pares = vcra[vcra["op"] == "V"].reset_index().merge(vcra[vcra["op"] == "C"].reset_index(), on=["codigo", "qt"],
+                                                         suffixes=("_v", "_c"))
+    pares = pares[(pares["CD_c"] == pares["CD_v"] + "A") & ((pares["pu_c"] - pares["pu_v"]).abs() < TOLERANCIA_PU)
+                  & (pares["data_c"] - pares["data_v"]).dt.days.between(0, JANELA_BOLETA)]
+    original = dict(zip(pares["CD_c"], pares["CD_v"]))
+
+    trades = casar_boletas(vcra.drop(index=list(set(pares["index_v"]) | set(pares["index_c"]))).reset_index(drop=True),
+                           boletas)
+    trades["grupo"] = np.where(trades["codigo"].map(vcra.groupby("codigo")["taxa_emissao"].max()) > 0, "CDI+", "%CDI")
+    trades["boleta_ok"], trades["taxa"], trades["fonte_taxa"] = _taxa_usada(trades, fonte)
+    for cd, (taxa, _) in correcoes.items():
+        while cd in original:  # lote relançado: a correção vale para a compra do lote original
+            cd = original[cd]
+        sel = (trades["op"] == "C") & (trades["CD"] == cd)
+        trades.loc[sel, "taxa"] = taxa
+        trades.loc[sel, "fonte_taxa"] = "manual"
+
+    trades["cdi"] = trades["data"].map({dia: cdi_do_dia(dia.date()) for dia in trades["data"].drop_duplicates()})
+    trades["taxa_vcra_conv"] = _vcra_na_convencao(trades, (1 + trades["cdi"]) ** (1 / 252) - 1)
+    trades["taxa_cdi_mais"] = _em_cdi_mais(trades["grupo"], trades["taxa"], trades["cdi"])
+    trades["financeiro"] = trades["qt"] * trades["pu"]
+    trades["operacao"] = trades["op"].map({"C": "Compra", "V": "Venda"})
+    return trades.sort_values(["data", "operacao", "codigo", "CD"]).reset_index(drop=True), len(pares)
+
+
+def trades_por_dia(trades):
+    """Uma linha por data e operação (compra ou venda): trades, ativos, financeiro e taxa média ponderada pelo
+    financeiro de cada trade, por grupo (na unidade do grupo) e no total (em CDI+ equivalente, com o CDI do dia)."""
+    chave = ["data", "operacao"]
+    dia = trades.groupby(chave).agg(n_trades=("CD", "size"), n_ativos=("codigo", "nunique"),
+                                    financeiro=("financeiro", "sum"), cdi=("cdi", "first"))
+    dia["taxa_total"] = _media_ponderada(trades, chave, "taxa_cdi_mais", "financeiro")
+    for grupo, sufixo in (("%CDI", "pct"), ("CDI+", "mais")):
+        g = trades[(trades["grupo"] == grupo) & trades["taxa"].notna()]
+        dia[f"taxa_{sufixo}"] = _media_ponderada(g, chave, "taxa", "financeiro")
+        dia[f"fin_{sufixo}"] = g.groupby(chave)["financeiro"].sum()
+    sem_taxa = trades[trades["taxa"].isna()].groupby(chave)["financeiro"]
+    dia["n_sem_taxa"] = sem_taxa.size().reindex(dia.index, fill_value=0)
+    dia["fin_sem_taxa"] = sem_taxa.sum()
+    dia["cdi"] = dia["cdi"] * 100
+    return dia.reset_index()
 
 
 # ── Saída ────────────────────────────────────────────────────────────────────
@@ -549,6 +621,22 @@ COLUNAS = {
               ("taxa_boleta", "Taxa da boleta", TAXA), ("boleta_ok", "Boleta válida", None),
               ("dif_boleta_vcra", "Boleta − VCRA", TAXA), ("taxa", "Taxa usada", TAXA),
               ("fonte_taxa", "Fonte da taxa", None)],
+    "Trades por dia": [FUNDO, ("data", "Data", DATA), ("operacao", "Operação", None), ("n_trades", "Trades", "0"),
+                       ("n_ativos", "Ativos", "0"), ("financeiro", "Financeiro (R$)", VALOR),
+                       ("taxa_total", "Taxa média em CDI+ equivalente", TAXA),
+                       ("taxa_pct", "%CDI: taxa média (% do CDI)", TAXA), ("fin_pct", "%CDI: financeiro (R$)", VALOR),
+                       ("taxa_mais", "CDI+: spread médio", TAXA), ("fin_mais", "CDI+: financeiro (R$)", VALOR),
+                       ("n_sem_taxa", "Sem taxa: trades", "0"), ("fin_sem_taxa", "Sem taxa: financeiro (R$)", VALOR),
+                       ("cdi", "CDI (% a.a.)", TAXA)],
+    "Trades": [FUNDO, ("data", "Data", DATA), ("operacao", "Operação", None), ("codigo", "Ativo", None),
+               ("isin", "ISIN", None), ("tipo", "Tipo (RFTP_CD)", None), ("indexador", "Indexador", None),
+               ("grupo", "Grupo", None), ("CD", "Lote", None), ("qt", "Quantidade", QTD), ("pu", "PU", PU),
+               ("financeiro", "Financeiro (R$)", VALOR), ("perc_cdi", "% do CDI (emissão)", TAXA),
+               ("taxa_emissao", "Spread de emissão", TAXA), ("taxa_vcra", "Taxa VCRA (bruta)", TAXA),
+               ("taxa_vcra_conv", "Taxa VCRA (convenção do grupo)", TAXA), ("data_boleta", "Data da boleta", DATA),
+               ("casou_por", "Boleta casou por", None), ("taxa_boleta", "Taxa da boleta", TAXA),
+               ("boleta_ok", "Boleta válida", None), ("taxa", "Taxa usada", TAXA), ("fonte_taxa", "Fonte da taxa", None),
+               ("taxa_cdi_mais", "Taxa em CDI+ equivalente", TAXA)],
     "Avisos": [FUNDO, ("aviso", "Aviso", None), ("ativo", "Ativo", None), ("lote", "Lote", None),
                ("detalhe", "Detalhe", None)],
     "Fundos": [FUNDO, ("nome", "Nome", None), ("data", "Data", DATA), ("status", "Status", None),
@@ -604,6 +692,23 @@ def imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi):
             taxa = f"{_cdi_mais(r.taxa_cdi_mais)} (%CDI convertido com CDI de {_br(cdi * 100)}% a.a.)"
         nome = "Carteira" if r.grupo == "CARTEIRA" else r.grupo
         print(f"[OK] {nome}: {r.n_ativos} ativos, R$ {_br(r.financeiro, 0)} — {taxa}")
+
+
+def imprimir_trades(trades, relancamentos):
+    """Linha do console com os trades do fundo no período: compras e vendas, financeiro e taxa média."""
+    if trades.empty:
+        print("[INFO] nenhum trade no período")
+        return
+    partes = []
+    for operacao, g in trades.groupby("operacao"):
+        ok = g[g["taxa_cdi_mais"].notna()]
+        taxa = (ok["financeiro"] * ok["taxa_cdi_mais"]).sum() / ok["financeiro"].sum() if len(ok) else np.nan
+        partes.append(f"{len(g)} {operacao.lower()}{'s' if len(g) > 1 else ''} (R$ {_br(g['financeiro'].sum(), 0)}"
+                      f"{f', {_cdi_mais(taxa)} equivalente' if pd.notna(taxa) else ''})")
+    fora = (f"; {relancamentos} relançamento{'s' if relancamentos > 1 else ''} da VCRA "
+            f"{'ficaram' if relancamentos > 1 else 'ficou'} fora") if relancamentos else ""
+    print(f"[INFO] trades de {trades['data'].min():%d/%m/%Y} a {trades['data'].max():%d/%m/%Y}, em "
+          f"{trades['data'].nunique()} dias: {' e '.join(partes)}{fora}")
 
 
 def _situacao(r):
@@ -693,8 +798,15 @@ def main(argv=None):
     except Exception as e:  # noqa — credenciais ou driver
         sys.exit(f"[ERRO] conexão com o banco: {e}")
 
-    partes = {aba: [] for aba in ("Carteira", "Ativos", "Lotes", "Avisos")}
+    partes = {aba: [] for aba in ("Carteira", "Ativos", "Lotes", "Trades por dia", "Trades", "Avisos")}
     resumo, historico, cdis = [], [], None
+
+    def cdi_do_dia(dia):  # para os trades: sem CDI até o dia, o CDI+ equivalente dos %CDI fica vazio
+        try:
+            return _cdi(args.cdi, cdis, dia)[0]
+        except RuntimeError:
+            return np.nan
+
     try:
         for fundo, nome in fundos:
             print(f"\n── {fundo}{f' ({nome})' if nome else ''} {'─' * 40}")
@@ -731,6 +843,11 @@ def main(argv=None):
                 lotes, ativos, carteira, avisos = calcular(*fatiar(d, d["data"]), d["data"], cdi, args.fonte, corr,
                                                            tipos)
                 imprimir_fundo(lotes, ativos, carteira, avisos, d["data"], cdi)
+                trades, relancamentos = calcular_trades(*fatiar(d, d["data"])[:2], args.fonte, corr, tipos, cdi_do_dia)
+                if args.desde:
+                    trades = trades[trades["data"] >= pd.Timestamp(d["desde"])]
+                por_dia = trades_por_dia(trades)
+                imprimir_trades(trades, relancamentos)
             except Exception as e:  # noqa — erro num fundo (dado faltando, consulta) não para os outros
                 print(f"[ERRO] {fundo}: {e}")
                 info["status"] = f"erro: {e}"
@@ -741,6 +858,8 @@ def main(argv=None):
             partes["Carteira"].append(carteira.assign(fundo=fundo, data=pd.Timestamp(d["data"])))
             partes["Ativos"].append(ativos.assign(fundo=fundo))
             partes["Lotes"].append(lotes.assign(fundo=fundo))
+            partes["Trades por dia"].append(por_dia.assign(fundo=fundo))
+            partes["Trades"].append(trades.assign(fundo=fundo))
             partes["Avisos"].append(pd.DataFrame(avisos, columns=["aviso", "ativo", "lote", "detalhe"]).assign(fundo=fundo))
     finally:
         disconnect()
@@ -750,6 +869,8 @@ def main(argv=None):
     if len(tabelas["Lotes"]):
         tabelas["Lotes"] = tabelas["Lotes"].sort_values(["fundo", "grupo", "codigo", "dt_compra"]).assign(
             boleta_ok=lambda x: x["boleta_ok"].map({True: "sim", False: "não"}))
+    if len(tabelas["Trades"]):
+        tabelas["Trades"] = tabelas["Trades"].assign(boleta_ok=lambda x: x["boleta_ok"].map({True: "sim", False: "não"}))
     tabelas["Fundos"] = pd.DataFrame(resumo)
     if args.desde:
         tabelas["Histórico"] = pd.DataFrame(historico)
@@ -770,13 +891,17 @@ def main(argv=None):
         ("Casamento com a boleta", f"mesmo ativo, até {JANELA_BOLETA} dias, mesma quantidade ou PU "
                                    f"(tolerância {TOLERANCIA_PU})"),
         ("Boleta válida", f"%CDI >= {LIMITE_CONVENCAO} (% do CDI); CDI+ < {LIMITE_CONVENCAO} (spread)"),
+        ("Trades", f"compras e vendas da VCRA no escopo, {'desde o início da série' if args.desde else 'todo o histórico'} "
+                   f"até a data; relançamentos (lote X + XA) ficam fora; taxa pelas regras dos lotes"),
         ("Correções manuais", f"{sum(map(len, correcoes.values()))} lote(s) com aplicar = S na aba Correções"),
         ("Gerado em", f"{datetime.now():%d/%m/%Y %H:%M}"),
     ], columns=["parametro", "valor"])
     notas = ["CDI+: spread sobre 100% do CDI (% a.a.). %CDI: % do CDI.",
              "CDI+ equivalente: %CDI convertido com CDI flat; o CDI usado em cada fundo está na aba Fundos.",
              "Médias ponderadas pelo financeiro (qtd em aberto x último PU da posição); ativo sem taxa ou sem PU "
-             "fica de fora (aba Avisos)."]
+             "fica de fora (aba Avisos).",
+             "Trades por dia: média ponderada pelo financeiro de cada trade (qtd x PU da operação); %CDI convertido "
+             "com o CDI do dia do trade; trade sem taxa fica de fora."]
     if args.desde:
         notas.append(f"Histórico: o mesmo cálculo em cada data, só com o que existia nela (VCRA e boletas até a "
                      f"data, PU dos {DIAS_PU} dias anteriores, CDI do dia). Carteira, Ativos, Lotes e Avisos são da "

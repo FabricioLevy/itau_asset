@@ -29,6 +29,8 @@ Entram só os tipos de papel marcados na aba Tipos e só papéis atrelados ao CD
 
 Com `--desde`, o mesmo cálculo é refeito em cada data desde o início do fundo, ou desde uma data, e a evolução da carteira sai na aba Histórico (seção 6.14).
 
+Além da carteira, o script mostra os trades: cada compra e venda, com a taxa pelas mesmas regras dos lotes, e a taxa média dos trades de cada dia, por fundo (seção 6.15).
+
 ## 2. Como rodar
 
 O script precisa rodar numa máquina com acesso ao DBSX337 (servidor SQNPRC028). A conexão é a do `sql_connection.py` da pasta e exige:
@@ -70,11 +72,13 @@ Cada rodada grava um Excel em `output/`. O nome é `taxa_media_<aaaammdd>.xlsx`,
 | Carteira | por fundo, uma linha por grupo e a linha CARTEIRA, com notas sobre as convenções |
 | Ativos | por ativo: tipo, taxa média, conferência de quantidade, PU, financeiro e CDI+ equivalente |
 | Lotes | por lote em aberto: tipo, indexador, compra, boleta casada, taxa da VCRA, taxa usada e de onde ela veio |
+| Trades por dia | uma linha por dia e operação (compra ou venda): trades, ativos, financeiro e taxa média por grupo e em CDI+ equivalente; os trades sem taxa à parte. Cobre todo o histórico até a data ou, com `--desde`, a partir do início da série |
+| Trades | cada compra e venda da VCRA no escopo: ativo, lote, quantidade, PU, financeiro, boleta casada, taxa da VCRA, taxa usada e de onde ela veio |
 | Avisos | tudo o que merece conferência (seção 8) |
 | Fundos | uma linha por fundo: data, status, taxa da carteira, financeiro, contagens e CDI usado |
 | Parâmetros | entrada, fonte, tipos incluídos e excluídos, regras de casamento e correções aplicadas |
 
-No console sai um bloco por fundo, com os avisos e o resultado de cada grupo, e no fim um resumo com uma linha por fundo. Com `--desde`, o bloco começa com uma linha por data da série.
+No console sai um bloco por fundo, com os avisos, o resultado de cada grupo e uma linha com os trades do período, e no fim um resumo com uma linha por fundo. Com `--desde`, o bloco começa com uma linha por data da série.
 
 Um erro num fundo (sem posição na data, consulta vazia) não para os outros: o fundo aparece na aba Fundos com o erro, e o script termina com código de saída 1.
 
@@ -275,6 +279,18 @@ Com `--desde`, o script lê o histórico do fundo uma vez e refaz os passos 6.1 
 - **Erros**: um erro numa data (ex.: sem CDI até aquele dia) sai na aba Histórico com o motivo, e a série segue.
 - **Tempo**: no teste, cada data levou menos de 0,1 s; uma série diária de 3 anos leva cerca de 1 minuto.
 
+### 6.15 Trades por dia (`calcular_trades`, `trades_por_dia`)
+
+Um trade é cada compra (C) e cada venda (V) da VCRA no escopo (seção 6.2), até a data de referência; com `--desde`, a partir do início da série.
+
+- **Relançamentos**: a venda do lote X e a compra do lote X + A, do mesmo ativo, na mesma quantidade e no mesmo PU, até 5 dias depois, não são trades e ficam fora. O trade é a compra original do lote X. Uma correção do lote relançado (ex.: `L10947A`) vale para essa compra original.
+- **Taxa de cada trade**: as regras dos lotes (seções 6.4 a 6.8), aplicadas trade a trade. A venda casa com a boleta de venda do mesmo jeito: mesmo ativo, até 5 dias, mesma quantidade ou mesmo PU. Sem boleta válida, a venda de um CDI+ usa o `VL_JUROSOPER` da linha de venda da VCRA, e a de um %CDI fica sem taxa. As correções valem só para compras.
+- **Média do dia**: por data e operação, ponderada pelo financeiro de cada trade (quantidade × PU da operação), só com os trades que têm taxa. Compra e venda nunca entram na mesma média. Sai por grupo, na unidade do grupo, e no total, em CDI+ equivalente com o CDI do dia do trade.
+- **Sem taxa**: os trades sem taxa aparecem nas colunas "Sem taxa: trades" e "Sem taxa: financeiro". O financeiro total do dia é a soma do %CDI, do CDI+ e dos sem taxa.
+- **Console**: uma linha por fundo com o período, as compras e as vendas (financeiro e taxa média em CDI+ equivalente) e os relançamentos que ficaram fora.
+
+Na primeira rodada, vale conferir as vendas, como a do lote K427575 (26C4869290, 13.750 vendidos), para confirmar que o `VL_JUROSOPER` da linha de venda é a taxa da venda.
+
 ## 7. Fórmulas
 
 Notação:
@@ -306,6 +322,10 @@ $$p_{VCRA} = \frac{(1 + p_e \, c_d)(1 + s)^{1/252} - 1}{c_d}$$
 Média de grupo ou de carteira, com $x_a$ = taxa média do ativo (no grupo) ou $s_{eq}$ do ativo (na carteira):
 
 $$\bar x = \frac{\sum_a F_a \, x_a}{\sum_a F_a}$$
+
+Média dos trades de um dia e de uma operação, com $f_k$ = quantidade × PU do trade $k$ e $x_k$ = taxa usada (no grupo) ou CDI+ equivalente com o CDI do dia (no total), só nos trades com taxa:
+
+$$\bar x_{dia} = \frac{\sum_k f_k \, x_k}{\sum_k f_k}$$
 
 ## 8. Avisos e erros
 
@@ -408,14 +428,19 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 | `_normalizar(df, ...)` | tira espaços e converte datas e números | DataFrame |
 | `filtrar_escopo(vcra, tipos, avisos)` | separa os movimentos dos tipos incluídos com indexador CDI | VCRA no escopo, motivos de quem ficou fora |
 | `montar_lotes(...)` | lotes em aberto, boleta casada, grupo, taxa usada, correções e avisos de lote | lotes em aberto |
-| `casar_boletas(compras, boletas)` | casa cada compra com uma boleta | compras com as colunas da boleta |
+| `casar_boletas(compras, boletas)` | casa cada compra (ou venda) com uma boleta | movimentos com as colunas da boleta |
+| `_taxa_usada(df, fonte)` | boleta válida, taxa usada e fonte da taxa de cada lote ou trade (seção 6.7) | três colunas |
+| `_vcra_na_convencao(df, cdi_d)`, `_em_cdi_mais(grupo, taxa, cdi)` | taxa da VCRA na convenção do grupo; taxa em CDI+ equivalente | coluna |
 | `montar_ativos(...)` | média por ativo, conferência com a posição, PU, financeiro, CDI+ equivalente e avisos de ativo | ativos |
 | `consolidar(ativos)` | médias por grupo e da carteira | carteira |
 | `_resumo(grupo, g)` | uma linha da carteira | dict |
 | `resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)` | linha das abas Fundos e Histórico: carteira e grupos, contagens e avisos por tipo | dict |
+| `calcular_trades(vcra, boletas, fonte, correcoes, tipos, cdi_do_dia)` | compras e vendas da VCRA no escopo, sem os relançamentos, com a boleta casada e a taxa | trades, número de relançamentos |
+| `trades_por_dia(trades)` | média dos trades por dia e operação, por grupo e em CDI+ equivalente | DataFrame |
 | `_media_ponderada(df, chave, valor, peso)` | média ponderada por grupo, ignorando valor vazio | Series |
 | `_aviso(...)` | acrescenta um aviso à lista | — |
 | `imprimir_fundo(...)` | bloco do fundo no console, na data de referência | — |
+| `imprimir_trades(trades, relancamentos)` | linha dos trades do fundo no console | — |
 | `_situacao(r)` | linha do console de uma data da série ou de um fundo no resumo | etiqueta e texto |
 | `salvar_xlsx(caminho, tabelas, notas)` | grava o Excel com as colunas e formatos de `COLUNAS` | — |
 | `_br(x, casas)` | número no formato brasileiro (1.234,56) | texto |
@@ -437,6 +462,8 @@ flowchart TD
     cdiOk -->|"sim"| tipoOp{"SG_OPERACAO"}
     tipoOp -->|"C"| compras["Compras"]
     tipoOp -->|"V"| vendas["Vendas somadas por lote (CD)"]
+    tipoOp -->|"C e V"| trades["Trades<br/>cada compra e cada venda<br/>sem relançamento<br/>(X → XA)<br/>taxa pelas regras dos lotes"]
+    trades --> mediaDia["Taxa média do dia<br/>por operação, ponderada<br/>pelo financeiro do trade<br/>(qtd × PU)"]
     tbFo[("FUNDOS_OPERACOES<br/>boletas")] --> casa
     compras --> casa["Casa cada compra com uma boleta<br/>mesmo ativo · até 5 dias<br/>mesma quantidade ou mesmo PU"]
     casa --> lote["Lote (CD)<br/>qt comprada · PU · taxa VCRA · taxa da boleta"]
@@ -472,7 +499,8 @@ flowchart TD
     tbIdx[("FUNDOS_DADOS_INDICES<br/>CDIAcumulado ou --cdi")] --> eqPct
     eqCdi --> cart["Médias ponderadas pelo financeiro<br/>CDI+ em spread · %CDI em % do CDI<br/>Carteira em CDI+ equivalente"]
     eqPct --> cart
-    cart --> saida[("Excel com todos os fundos<br/>+ console<br/>com --desde, uma linha por<br/>data na aba Histórico")]
+    cart --> saida[("Excel com todos os fundos<br/>+ console<br/>trades por dia e por trade<br/>com --desde, uma linha por<br/>data na aba Histórico")]
+    mediaDia --> saida
 ```
 
 ### Relações do código
@@ -532,24 +560,31 @@ flowchart LR
         fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador CDI"]
         fnLotes["montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos)<br/>→ lotes em aberto<br/>grupo · boleta válida (LIMITE_CONVENCAO) · taxa usada<br/>correções · aviso Boleta × VCRA (DIVERGENCIA)"]
         fnCasar["casar_boletas(compras, boletas)<br/>JANELA_BOLETA · TOLERANCIA_PU"]
-        fnAtivos["montar_ativos(lotes, posicao, data, cdi, cdi_d, fora, avisos)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
+        fnAtivos["montar_ativos(lotes, posicao, data, cdi, fora, avisos)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
         fnCons["consolidar(ativos)<br/>→ carteira: grupos e CARTEIRA"]
         fnResumo["_resumo(grupo, g)"]
         fnMedia["_media_ponderada(df, chave, valor, peso)"]
         fnAviso["_aviso(avisos, aviso, ativo, detalhe, lote)"]
         fnResumoData["resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)<br/>→ linha das abas Fundos e Histórico"]
+        fnRegra["_taxa_usada<br/>_vcra_na_convencao<br/>_em_cdi_mais<br/>regra da taxa e conversões,<br/>comuns a lotes e trades"]
+    end
+
+    subgraph TRADES["Trades"]
+        fnTrades["calcular_trades(vcra,<br/>boletas, fonte, correcoes,<br/>tipos, cdi_do_dia)<br/>→ trades · relançamentos<br/>C e V do escopo, sem<br/>relançamento (X → XA)"]
+        fnTradesDia["trades_por_dia(trades)<br/>→ média por dia<br/>e operação"]
     end
 
     subgraph FMT["Console e Excel"]
         fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)<br/>detalhe da data de referência"]
         fnSit["_situacao(r)<br/>linha de cada data da série e do resumo"]
+        fnImpTrades["imprimir_trades(trades, relancamentos)<br/>linha dos trades no console"]
         fnBr["_br(x, casas)<br/>1.234,56"]
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
         fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
     end
 
-    arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
-    console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · resumo<br/>por fundo"])
+    arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes<br/>Trades por dia · Trades<br/>Avisos · Fundos · Parâmetros")]
+    console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · trades<br/>resumo por fundo"])
 
     cli --> fnMain
     fnMain --> fnArgs
@@ -593,12 +628,23 @@ flowchart LR
     fnLotes --> fnBr
     fnAtivos --> fnBr
     fnCons --> fnResumo
+    fnLotes --> fnRegra
+    fnAtivos --> fnRegra
+    fnMain -->|"VCRA e boletas até a data, fonte, correções, tipos"| fnTrades
+    fnTrades --> fnNorm
+    fnTrades --> fnEscopo
+    fnTrades --> fnCasar
+    fnTrades --> fnRegra
+    fnTrades -->|"CDI do dia"| fnCdiData
+    fnMain -->|"trades do período"| fnTradesDia
+    fnTradesDia --> fnMedia
     fnMain -->|"lotes, ativos, carteira, avisos da data"| fnResumoData
 
     fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
     fnXlsx --> arqXlsx
     fnMain --> fnImp
     fnMain --> fnSit
+    fnMain --> fnImpTrades
     fnImp --> fnBr
     fnImp --> fnCdiMais
     fnSit --> fnCdiMais
@@ -606,6 +652,9 @@ flowchart LR
     fnCdiMais --> fnBr
     fnImp --> console
     fnSit --> console
+    fnImpTrades --> fnCdiMais
+    fnImpTrades --> fnBr
+    fnImpTrades --> console
     fnMain -->|"erros"| console
 ```
 
@@ -630,4 +679,14 @@ Em 27/10/2026, a série (`--desde`) foi testada do mesmo jeito. A posição foi 
 - uma data sem CDI sai com erro na aba Histórico, e as outras seguem;
 - uma série diária de 3 anos, com 6 mil movimentos na VCRA, levou cerca de 1 minuto.
 
-Até 27/10/2026, o script ainda não tinha rodado contra o banco de verdade.
+Ainda em 27/10/2026, a série diária do ITAIMOBCDIFII rodou no banco de verdade, de 12/03 a 27/10/2026, e reproduziu os números de 23/10 (carteira CDI+1,8511).
+
+Os trades (seção 6.15) foram testados no mesmo dia, com o banco simulado, e o teste confirmou estes pontos:
+
+- as 48 compras dos dados de 23/10 viram trades. O relançamento do L10947 fica fora, e o trade é a compra original de 03/09, com a boleta casada pelo PU;
+- as médias de 17/04 (só CDI+) e de 15/10 (só %CDI, em CDI+ equivalente com o CDI do dia) batem com uma conta independente;
+- a correção do L10947A vale para a compra original L10947, e a do L79492 entra no dia 23/09;
+- três vendas simuladas saem como esperado: uma com boleta de venda, uma de CDI+ sem boleta, que usa a VCRA, e uma de %CDI sem boleta, que fica sem taxa;
+- com `--desde 01/09/2026`, os trades começam em 01/09.
+
+Os trades ainda não rodaram no banco de verdade.
