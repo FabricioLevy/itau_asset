@@ -7,6 +7,7 @@ taxa_media/
 ├── __main__.py           script
 ├── sql_connection.py     conexão com o DBSX337
 ├── input/fundos.xlsx     fundos, tipos de papel e correções manuais
+├── sql/taxa_media.sql    o mesmo cálculo em T-SQL, para um fundo no SSMS
 ├── output/               Excel gerado
 └── doc/
     ├── taxa_media.md     esta documentação
@@ -26,6 +27,8 @@ Para cada fundo da lista em `input/fundos.xlsx`, o script calcula a **taxa de aq
 
 Entram só os tipos de papel marcados na aba Tipos e só papéis atrelados ao CDI. IPCA+, pré e SELIC ficam fora, com aviso.
 
+Com `--desde`, o mesmo cálculo é refeito em cada data desde o início do fundo, ou desde uma data, e a evolução da carteira sai na aba Histórico (seção 6.14).
+
 ## 2. Como rodar
 
 O script precisa rodar numa máquina com acesso ao DBSX337 (servidor SQNPRC028). A conexão é a do `sql_connection.py` da pasta e exige:
@@ -41,13 +44,17 @@ python __main__.py                          (fundos da aba Fundos, cada um na ú
 python __main__.py --data 23/10/2026
 python __main__.py --fundo ITAIMOBCDIFII    (só esse fundo; tipos e correções continuam vindo do Excel)
 python __main__.py --fonte vcra --cdi 13.65
+python __main__.py --fundo ITAIMOBCDIFII --desde            (série mensal desde o início do fundo)
+python __main__.py --desde 01/06/2026 --frequencia diaria   (série diária a partir de 01/06/2026)
 ```
 
 | Parâmetro | Padrão | O que faz |
 |---|---|---|
 | `--entrada` | `input/fundos.xlsx` | Excel com as abas Fundos, Tipos e Correções (seção 3) |
 | `--fundo` | fundos da aba Fundos | um ou mais fundos no lugar da aba Fundos; só letras, números e `_` |
-| `--data` | última data de cada fundo na `VW_FUNDOS_POSICAO` | data de referência, dd/mm/aaaa, a mesma para todos os fundos |
+| `--data` | última data de cada fundo na `VW_FUNDOS_POSICAO` | data de referência, dd/mm/aaaa, a mesma para todos os fundos; com `--desde`, é o fim da série |
+| `--desde` | sem série | refaz o cálculo em cada data desde dd/mm/aaaa. Sozinho (ou com `inicio`), começa na primeira data do fundo na `VW_FUNDOS_POSICAO`. Grava a aba Histórico (seção 6.14) |
+| `--frequencia` | `mensal` | datas da série: `mensal` (a última data com posição de cada mês) ou `diaria` (todas as datas com posição). Só vale com `--desde` |
 | `--fonte` | `boleta` | taxa dos CDI+: `boleta` (negociada) ou `vcra` (custódia, calculada pelo PU pago). Os %CDI usam sempre a boleta |
 | `--cdi` | `CDIAcumulado` da `FUNDOS_DADOS_INDICES` na data de cada fundo | CDI em % a.a., usado só para converter %CDI em CDI+ equivalente |
 
@@ -55,10 +62,11 @@ Sem o Excel, o script só roda com `--fundo`; nesse caso usa os tipos padrão (s
 
 ### Saída
 
-Cada rodada grava um Excel em `output/`. O nome é `taxa_media_<aaaammdd>.xlsx`, ou `taxa_media_<fundo>_<aaaammdd>.xlsx` quando roda um fundo só. A data é a do `--data` ou a mais recente entre os fundos. Todas as abas têm a coluna Fundo:
+Cada rodada grava um Excel em `output/`. O nome é `taxa_media_<aaaammdd>.xlsx`, ou `taxa_media_<fundo>_<aaaammdd>.xlsx` quando roda um fundo só. Com `--desde`, o nome começa com `taxa_media_historico`. A data é a do `--data` ou a mais recente entre os fundos. Todas as abas têm a coluna Fundo:
 
 | Aba | Conteúdo |
 |---|---|
+| Histórico | só com `--desde`: uma linha por fundo e data da série, com taxa e financeiro da carteira e de cada grupo, quantidade de ativos e de lotes, CDI do dia e avisos por tipo. As abas Carteira, Ativos, Lotes e Avisos são da última data |
 | Carteira | por fundo, uma linha por grupo e a linha CARTEIRA, com notas sobre as convenções |
 | Ativos | por ativo: tipo, taxa média, conferência de quantidade, PU, financeiro e CDI+ equivalente |
 | Lotes | por lote em aberto: tipo, indexador, compra, boleta casada, taxa da VCRA, taxa usada e de onde ela veio |
@@ -66,9 +74,13 @@ Cada rodada grava um Excel em `output/`. O nome é `taxa_media_<aaaammdd>.xlsx`,
 | Fundos | uma linha por fundo: data, status, taxa da carteira, financeiro, contagens e CDI usado |
 | Parâmetros | entrada, fonte, tipos incluídos e excluídos, regras de casamento e correções aplicadas |
 
-No console sai um bloco por fundo, com os avisos e o resultado de cada grupo, e no fim um resumo com uma linha por fundo.
+No console sai um bloco por fundo, com os avisos e o resultado de cada grupo, e no fim um resumo com uma linha por fundo. Com `--desde`, o bloco começa com uma linha por data da série.
 
 Um erro num fundo (sem posição na data, consulta vazia) não para os outros: o fundo aparece na aba Fundos com o erro, e o script termina com código de saída 1.
+
+### Versão em SQL
+
+`sql/taxa_media.sql` faz o mesmo cálculo para um fundo numa data, direto no SSMS; a série do `--desde` existe só no script. As variáveis `@tipos` e `@correcoes` fazem o papel das abas Tipos e Correções e precisam ser preenchidas à mão. A query devolve seis resultados: Parâmetros, Carteira, Ativos, Lotes, Avisos e Pendências. As Pendências saem no formato da aba Correções (fundo, CD, taxa, aplicar, motivo): é preencher a taxa, trocar `aplicar` para S e colar as linhas na aba.
 
 ## 3. Entrada: `input/fundos.xlsx`
 
@@ -128,8 +140,8 @@ Todas as leituras usam `WITH (NOLOCK)` para não bloquear a base. A contrapartid
 |---|---|---|---|
 | `VCRAOPRF` | `CLCLI_CD` = fundo, `SG_OPERACAO` C ou V, `DT` até a data (todos os tipos; o escopo é aplicado depois, seção 6.2) | `CD`, `CD_CETIP_SELIC`, `ISIN`, `RFTP_CD`, `IDDIR_CD`, `DT`, `SG_OPERACAO`, `QT`, `VL_PU_OPERACAO`, `IDDIR_PC`, `VL_JUROS_EMISSAO`, `VL_JUROSOPER` | lotes, quantidades, tipo, indexador e taxa da custódia |
 | `FUNDOS_OPERACOES` | `codigo_IAM_fundo` = fundo, ativos dos tipos incluídos, `date_operacao` até a data + 5 dias | `codigo_IAM_ativo`, `date_operacao`, `exec_qt`, `exec_preco`, `exec_taxa` | taxa negociada |
-| `VW_FUNDOS_POSICAO` | `codigo_IAM_fundo` = fundo, `tipo = 'Fixed Income'`, 30 dias até a data | `codigo_IAM_ativo`, `isin`, `date`, `quantidade`, `total` | conferência de quantidade e PU atual; sem `--data`, também a última data do fundo |
-| `FUNDOS_DADOS_INDICES` | `codigo_IAM_indice = 'CDIAcumulado'`, último dia até a data com `pnl_perc` > 0 | `date`, `pnl_perc` | CDI da conversão (só sem `--cdi`; uma consulta por data) |
+| `VW_FUNDOS_POSICAO` | `codigo_IAM_fundo` = fundo, `tipo = 'Fixed Income'`, 30 dias até a data (com `--desde`, de 30 dias antes do início da série até a data) | `codigo_IAM_ativo`, `isin`, `date`, `quantidade`, `total` | conferência de quantidade e PU; as datas da série; sem `--data`, a última data do fundo; com `--desde` sem data, a primeira |
+| `FUNDOS_DADOS_INDICES` | `codigo_IAM_indice = 'CDIAcumulado'` com `pnl_perc` > 0, a série inteira; vale o último dia até cada data | `date`, `pnl_perc` | CDI da conversão (só sem `--cdi`; uma consulta por execução) |
 
 As três primeiras se ligam pelo código do ativo: `VCRAOPRF.CD_CETIP_SELIC` = `FUNDOS_OPERACOES.codigo_IAM_ativo` = `VW_FUNDOS_POSICAO.codigo_IAM_ativo`.
 
@@ -252,6 +264,17 @@ Entram só os ativos que têm taxa média e financeiro.
 - **Grupo**: média das taxas médias dos ativos, ponderada pelo financeiro, na unidade do grupo (spread no CDI+, % do CDI no %CDI). Sai também o CDI+ equivalente do grupo.
 - **Carteira**: média do CDI+ equivalente de todos os ativos, ponderada pelo financeiro.
 
+### 6.14 Série desde o início (`--desde`)
+
+Com `--desde`, o script lê o histórico do fundo uma vez e refaz os passos 6.1 a 6.13 em cada data da série, só com o que existia nela. O resultado de cada data é o mesmo de rodar com `--data` naquela data.
+
+- **Datas**: as datas com posição de renda fixa entre o início e a data de referência: na `mensal`, a última de cada mês; na `diaria`, todas. O início é a data do `--desde` ou, sem data, a primeira data do fundo na `VW_FUNDOS_POSICAO`. A última data da série é sempre a data de referência, que também sai com o detalhe nas outras abas.
+- **Em cada data**: compras e vendas da VCRA até a data, boletas até a data + 5 dias, posição e PU dos 30 dias anteriores e o CDI do dia (ou o `--cdi`).
+- **Correções**: numa data, só entram as correções de lotes que já estão na VCRA. Antes da compra do lote, a correção é ignorada sem o aviso "Correção não aplicada".
+- **Dados de hoje**: a série usa o banco como ele está agora. Uma boleta corrigida ou um lote relançado depois vale também nas datas anteriores, então o Histórico pode diferir de um relatório tirado na época.
+- **Erros**: um erro numa data (ex.: sem CDI até aquele dia) sai na aba Histórico com o motivo, e a série segue.
+- **Tempo**: no teste, cada data levou menos de 0,1 s; uma série diária de 3 anos leva cerca de 1 minuto.
+
 ## 7. Fórmulas
 
 Notação:
@@ -311,8 +334,10 @@ O cálculo continua; o aviso sai no console e na aba Avisos, nesta ordem:
 | Situação | O que acontece |
 |---|---|
 | Excel de entrada com coluna faltando, fundo com código inválido ou correção sem taxa | o script para antes de consultar o banco, com a aba e a linha do problema |
+| `--frequencia` sem `--desde`, `--desde` depois de `--data` ou data inválida | o script para antes de consultar o banco |
 | credenciais ou driver do banco | o script para antes do primeiro fundo |
-| fundo sem posição, VCRA ou posição sem nenhuma linha, CDI fora de 1% a 50% a.a. | erro só nesse fundo: os outros seguem, ele sai na aba Fundos com o erro e o código de saída fica 1 |
+| fundo sem posição, VCRA ou posição sem nenhuma linha, CDI fora de 1% a 50% a.a., `--desde` depois da última data do fundo | erro só nesse fundo: os outros seguem, ele sai na aba Fundos com o erro e o código de saída fica 1 |
+| erro numa data da série (ex.: sem CDI até aquele dia) | a data sai na aba Histórico com o erro; as outras datas seguem e o fundo não conta como erro |
 | fundo sem nenhum ativo com taxa e PU | status "sem ativo com taxa e PU" na aba Fundos (não conta como erro) |
 | Excel de saída aberto | `[ERRO] não deu para gravar ...: o arquivo está aberto no Excel?` |
 
@@ -367,12 +392,16 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 
 | Função | O que faz | Devolve |
 |---|---|---|
-| `main(argv)` | lê os argumentos e o Excel, roda os fundos um a um, imprime e grava o Excel | — |
+| `main(argv)` | lê os argumentos e o Excel, roda os fundos um a um (com `--desde`, cada data da série), imprime e grava o Excel | — |
 | `carregar_entrada(caminho)` | lê as abas Fundos, Tipos e Correções | fundos, tipos, correções |
 | `_aba(abas, nome, colunas, caminho)` | pega uma aba e confere as colunas | DataFrame ou `None` |
 | `_chave`, `_sim`, `_texto`, `_numero` | nome sem acento; S/N; texto limpo; número com vírgula ou ponto | — |
-| `carregar_fundo(query, fundo, data, tipos)` | resolve a data e lê VCRA, boletas e posição do fundo | `vcra`, `boletas`, `posicao`, `data` |
-| `carregar_cdi(query, data)` | lê o CDIAcumulado e anualiza | CDI a.a. e origem |
+| `_data`, `_desde` | lê o `--data` e o `--desde` (dd/mm/aaaa; o `--desde` aceita também `inicio`) | data |
+| `carregar_fundo(query, fundo, data, tipos, desde)` | resolve a data e o início da série e lê VCRA, boletas e posição do fundo | `vcra`, `boletas`, `posicao`, `data`, `desde` e a data de cada linha (`dt`) |
+| `datas_da_serie(d, frequencia)` | datas do cálculo: só a de referência ou, com `--desde`, as da série | lista de datas |
+| `fatiar(d, data)` | recorta VCRA, boletas e posição como as consultas viriam rodando naquela data | `vcra`, `boletas`, `posicao` |
+| `carregar_cdi(query)` | lê a série do CDIAcumulado, uma vez por execução | DataFrame |
+| `cdi_na_data(cdis, data)`, `_cdi(cdi_fixo, cdis, data)` | CDI do último dia até a data, anualizado e conferido; ou o `--cdi` | CDI a.a. e origem |
 | `_consulta(query, sql, nome, obrigatoria)` | roda um SELECT; resultado vazio vira erro quando a consulta é obrigatória | DataFrame |
 | `_lista_sql(valores)` | monta a lista de códigos do `IN` da consulta de boletas | texto |
 | `calcular(...)` | normaliza os dados de um fundo, encadeia escopo → lotes → ativos → carteira e ordena os avisos | `lotes`, `ativos`, `carteira`, `avisos` |
@@ -383,9 +412,11 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 | `montar_ativos(...)` | média por ativo, conferência com a posição, PU, financeiro, CDI+ equivalente e avisos de ativo | ativos |
 | `consolidar(ativos)` | médias por grupo e da carteira | carteira |
 | `_resumo(grupo, g)` | uma linha da carteira | dict |
+| `resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)` | linha das abas Fundos e Histórico: carteira e grupos, contagens e avisos por tipo | dict |
 | `_media_ponderada(df, chave, valor, peso)` | média ponderada por grupo, ignorando valor vazio | Series |
 | `_aviso(...)` | acrescenta um aviso à lista | — |
-| `imprimir_fundo(...)` | bloco do fundo no console | — |
+| `imprimir_fundo(...)` | bloco do fundo no console, na data de referência | — |
+| `_situacao(r)` | linha do console de uma data da série ou de um fundo no resumo | etiqueta e texto |
 | `salvar_xlsx(caminho, tabelas, notas)` | grava o Excel com as colunas e formatos de `COLUNAS` | — |
 | `_br(x, casas)` | número no formato brasileiro (1.234,56) | texto |
 | `_cdi_mais(x)` | taxa no formato CDI+x / CDI−x | texto |
@@ -397,7 +428,8 @@ Os dois diagramas abaixo estão em Mermaid. O GitHub e o GitLab mostram o desenh
 ```mermaid
 flowchart TD
     entrada[("input/fundos.xlsx<br/>aba Fundos")] --> cadaFundo["Para cada fundo"]
-    cadaFundo --> tbVcra[("VCRAOPRF<br/>C e V do fundo até a data<br/>eventos M, J e I ficam fora")]
+    cadaFundo --> cadaData["Para cada data<br/>a de referência ou, com<br/>--desde, cada data da série<br/>(mensal ou diária)"]
+    cadaData --> tbVcra[("VCRAOPRF<br/>C e V do fundo até a data<br/>eventos M, J e I ficam fora")]
     tbVcra --> tipoOk{"Tipo com incluir = S<br/>na aba Tipos?"}
     tipoOk -->|"não"| foraTipo["Fica fora<br/>aviso Tipo novo se o tipo<br/>não está na aba"]
     tipoOk -->|"sim"| cdiOk{"Indexador CDI?"}
@@ -440,7 +472,7 @@ flowchart TD
     tbIdx[("FUNDOS_DADOS_INDICES<br/>CDIAcumulado ou --cdi")] --> eqPct
     eqCdi --> cart["Médias ponderadas pelo financeiro<br/>CDI+ em spread · %CDI em % do CDI<br/>Carteira em CDI+ equivalente"]
     eqPct --> cart
-    cart --> saida[("Excel com todos os fundos + console")]
+    cart --> saida[("Excel com todos os fundos<br/>+ console<br/>com --desde, uma linha por<br/>data na aba Histórico")]
 ```
 
 ### Relações do código
@@ -450,28 +482,35 @@ O mesmo diagrama está em `doc/fluxograma.mmd`, para abrir em editores de Mermai
 ```mermaid
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo · --data · --fonte · --cdi"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
-    fnMain["main(argv)<br/>argparse · valida --fundo e --cdi<br/>um fundo por vez: erro num fundo não para os outros"]
+    fnMain["main(argv)<br/>argparse · valida<br/>os argumentos<br/>fundo a fundo e, com<br/>--desde, data a data<br/>erro num fundo ou data<br/>não para os outros"]
 
-    subgraph LEITURA["Leitura do Excel"]
+    subgraph LEITURA["Excel e argumentos"]
         fnEntrada["carregar_entrada(caminho)<br/>→ fundos · tipos · correções<br/>sem aba Tipos: TIPOS_PADRAO"]
         fnAba["_aba(abas, nome, colunas, caminho)"]
         fnAux["_chave · _sim · _texto · _numero"]
+        fnArgs["_data · _desde<br/>--data e --desde: dd/mm/aaaa ou inicio"]
     end
 
     subgraph CARGA["Carga do banco · NOLOCK"]
-        fnFundo["carregar_fundo(query, fundo, data, tipos)<br/>→ vcra · boletas · posicao · data<br/>sem --data: última data da posição"]
-        fnCdi["carregar_cdi(query, data)<br/>→ CDI a.a. e origem<br/>uma vez por data, sem --cdi"]
-        sqlUlt["SQL_ULTIMA_DATA"]
+        fnFundo["carregar_fundo(query,<br/>fundo, data, tipos, desde)<br/>→ vcra · boletas · posicao<br/>data · desde · dt<br/>sem --data: última data<br/>da posição<br/>--desde sozinho: primeira<br/>data da posição"]
+        fnCdi["carregar_cdi(query)<br/>→ série do CDIAcumulado<br/>uma vez por execução, sem --cdi"]
+        sqlDatas["SQL_DATAS<br/>primeira e última data do fundo"]
         sqlVcra["SQL_VCRA<br/>todos os tipos · C e V · DT até a data"]
         fnLista["_lista_sql(valores)"]
         sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>até a data + JANELA_BOLETA"]
-        sqlPos["SQL_POSICAO<br/>Fixed Income · DIAS_PU dias"]
+        sqlPos["SQL_POSICAO<br/>Fixed Income · do início − DIAS_PU até a data"]
         sqlCdi["SQL_CDI<br/>CDIAcumulado · pnl_perc"]
         fnConsulta["_consulta(query, sql, nome, obrigatoria)<br/>resultado vazio = erro, menos nas boletas"]
+    end
+
+    subgraph SERIE["Datas do cálculo"]
+        fnDatas["datas_da_serie(d, frequencia)<br/>→ a data de referência ou,<br/>com --desde, as datas<br/>da série (mensal ou diária)"]
+        fnFatiar["fatiar(d, data)<br/>→ vcra · boletas · posicao<br/>como na data<br/>VCRA: até a data<br/>boletas: + JANELA_BOLETA<br/>posição: DIAS_PU dias"]
+        fnCdiData["_cdi(cdi_fixo, cdis, data)<br/>cdi_na_data(cdis, data)<br/>→ CDI a.a. e origem<br/>--cdi ou o último<br/>CDIAcumulado até a data"]
     end
 
     subgraph CONN["sql_connection.py"]
@@ -487,7 +526,7 @@ flowchart LR
         tbIdx[("FUNDOS_DADOS_INDICES")]
     end
 
-    subgraph CALC["Cálculo de um fundo"]
+    subgraph CALC["Cálculo de uma data"]
         fnCalc["calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos)<br/>→ lotes · ativos · carteira · avisos<br/>ordena os avisos por ORDEM_AVISOS"]
         fnNorm["_normalizar(df, textos, datas, numeros)"]
         fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador CDI"]
@@ -498,19 +537,22 @@ flowchart LR
         fnResumo["_resumo(grupo, g)"]
         fnMedia["_media_ponderada(df, chave, valor, peso)"]
         fnAviso["_aviso(avisos, aviso, ativo, detalhe, lote)"]
+        fnResumoData["resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)<br/>→ linha das abas Fundos e Histórico"]
     end
 
     subgraph FMT["Console e Excel"]
-        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)"]
+        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)<br/>detalhe da data de referência"]
+        fnSit["_situacao(r)<br/>linha de cada data da série e do resumo"]
         fnBr["_br(x, casas)<br/>1.234,56"]
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
-        fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS"]
+        fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
     end
 
-    arqXlsx[("Saída: output/taxa_media_AAAAMMDD.xlsx<br/>Carteira · Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
-    console(["Saída: console<br/>[INFO] · [OK] · [AVISO] · [ERRO]<br/>resumo por fundo"])
+    arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
+    console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · resumo<br/>por fundo"])
 
     cli --> fnMain
+    fnMain --> fnArgs
     fnMain -->|"--entrada"| fnEntrada
     xlsxIn -.-> fnEntrada
     fnEntrada --> fnAba
@@ -518,22 +560,25 @@ flowchart LR
     fnAba --> fnAux
     fnMain -->|"antes dos fundos"| cnGet
 
-    fnMain -->|"para cada fundo: fundo, data, tipos"| fnFundo
-    fnMain -->|"data do fundo"| fnCdi
-    fnFundo --> sqlUlt & sqlVcra & sqlBol & sqlPos
+    fnMain -->|"para cada fundo: fundo, data, tipos, desde"| fnFundo
+    fnMain -->|"uma vez, sem --cdi"| fnCdi
+    fnFundo --> sqlDatas & sqlVcra & sqlBol & sqlPos
     fnFundo --> fnLista
     fnLista -->|"códigos"| sqlBol
     fnCdi --> sqlCdi
-    sqlUlt & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
+    sqlDatas & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
     fnConsulta --> cnQuery
     fnMain -->|"no fim, sempre"| cnDisc
-    sqlUlt -.-> tbPos
+    sqlDatas -.-> tbPos
     sqlPos -.-> tbPos
     sqlVcra -.-> tbVcra
     sqlBol -.-> tbFo
     sqlCdi -.-> tbIdx
 
-    fnMain -->|"dados do fundo, cdi, fonte, correções do fundo, tipos"| fnCalc
+    fnMain -->|"dados do fundo"| fnDatas
+    fnMain -->|"cada data"| fnFatiar
+    fnMain -->|"cada data, série do CDI"| fnCdiData
+    fnMain -->|"dados da data, cdi, fonte, correções, tipos"| fnCalc
     fnCalc --> fnNorm
     fnCalc -->|"1 · vcra"| fnEscopo
     fnCalc -->|"2 · VCRA no escopo, boletas"| fnLotes
@@ -548,15 +593,20 @@ flowchart LR
     fnLotes --> fnBr
     fnAtivos --> fnBr
     fnCons --> fnResumo
+    fnMain -->|"lotes, ativos, carteira, avisos da data"| fnResumoData
 
     fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
     fnXlsx --> arqXlsx
     fnMain --> fnImp
+    fnMain --> fnSit
     fnImp --> fnBr
     fnImp --> fnCdiMais
+    fnSit --> fnCdiMais
+    fnSit --> fnBr
     fnCdiMais --> fnBr
     fnImp --> console
-    fnMain -->|"resumo e erros"| console
+    fnSit --> console
+    fnMain -->|"erros"| console
 ```
 
 ## 12. Validação
@@ -570,4 +620,14 @@ Em 26/10/2026, o script foi testado sem acesso ao banco, com dados extraídos do
 - com dois fundos na lista, um deles sem posição, o outro é calculado normalmente: o fundo com erro sai na aba Fundos e o código de saída é 1. Com a correção do 26A1798621 ligada, o %CDI vai a 102,70% do CDI e a carteira a CDI+1,80;
 - o modelo `input/fundos.xlsx` é lido como esperado.
 
-Até essa data, o script ainda não tinha rodado contra o banco de verdade.
+Em 27/10/2026, a série (`--desde`) foi testada do mesmo jeito. A posição foi gerada em todos os dias úteis de 01/04 a 23/10/2026, e o CDI foi de 14,15% até junho e de 13,65% depois. O teste confirmou estes pontos:
+
+- a última data da série dá os mesmos números de antes (carteira CDI+1,85);
+- o resultado de 30/04/2026 bate com uma conta independente, feita só com os lotes comprados até essa data;
+- uma data da série (31/08/2026) dá o mesmo resultado de rodar com `--data 31/08/2026`;
+- cada data usa o CDI do seu dia;
+- com a correção do 26A1798621 ligada, nenhuma data antes da compra do lote (23/09) mostra "Correção não aplicada", e todas as datas a partir dela mostram "Correção manual";
+- uma data sem CDI sai com erro na aba Histórico, e as outras seguem;
+- uma série diária de 3 anos, com 6 mil movimentos na VCRA, levou cerca de 1 minuto.
+
+Até 27/10/2026, o script ainda não tinha rodado contra o banco de verdade.

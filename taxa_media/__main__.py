@@ -2,7 +2,7 @@
 # taxa_media/__main__.py
 # Taxa média de aquisição dos papéis de crédito atrelados ao CDI (CRI, debênture, CRA...) de uma lista de
 # fundos: taxa de cada lote em aberto na custódia, média por ativo (ponderada pela quantidade) e da carteira
-# (ponderada pelo financeiro atual).
+# (ponderada pelo financeiro atual). Com --desde, também a série da carteira desde o início do fundo.
 #
 # Entrada: input/fundos.xlsx (colunas S/N aceitam S, Sim, X ou 1)
 #   Fundos      fundo (codigo_IAM_fundo) · rodar (S/N, vazio = S) · nome (livre)
@@ -36,9 +36,13 @@
 #   ativo     média das taxas dos lotes, ponderada pela quantidade em aberto.
 #   carteira  média ponderada pelo financeiro (qtd x último PU), por grupo e no total. O total junta os grupos
 #             em CDI+ equivalente, com CDI flat: spread = (1 + %CDI x CDI diário)^252 / (1 + CDI) - 1.
+#   série     com --desde, o mesmo cálculo em cada data (a última de cada mês ou, com --frequencia diaria,
+#             todas as datas com posição), só com o que existia nela: VCRA e boletas até a data, PU dos
+#             DIAS_PU dias anteriores e CDI do dia.
 #
-# Saída: output/taxa_media_<aaaammdd>.xlsx (com um fundo só, taxa_media_<fundo>_<aaaammdd>.xlsx) — abas
-#   Carteira, Ativos, Lotes, Avisos, Fundos e Parâmetros, com a coluna Fundo. Erro num fundo não para os
+# Saída: output/taxa_media_<aaaammdd>.xlsx (com um fundo só, taxa_media_<fundo>_<aaaammdd>.xlsx; com --desde,
+#   taxa_media_historico_...) — abas Histórico (só com --desde: uma linha por fundo e data), Carteira, Ativos,
+#   Lotes e Avisos (da última data), Fundos e Parâmetros, com a coluna Fundo. Erro num fundo não para os
 #   outros: o fundo sai na aba Fundos com o erro.
 #
 # Requisitos: ODBC Driver 18 for SQL Server, pyodbc, sqlalchemy, pandas, openpyxl.
@@ -48,6 +52,13 @@
 #   python __main__.py --data 23/10/2026
 #   python __main__.py --fundo ITAIMOBCDIFII    (só esse fundo; tipos e correções continuam vindo do Excel)
 #   python __main__.py --fonte vcra --cdi 13.65
+#   python __main__.py --fundo ITAIMOBCDIFII --desde            (série mensal desde o início do fundo)
+#   python __main__.py --desde 01/06/2026 --frequencia diaria   (série diária a partir de 01/06/2026)
+
+#   python __main__.py --fundo ITAIMOBCDIFII --desde                       (mensal, desde o início do fundo)
+#   python __main__.py --fundo ITAIMOBCDIFII --desde --frequencia diaria   (todos os dias)
+#   python __main__.py --fundo ITAIMOBCDIFII --desde 01/06/2026            (a partir de uma data)
+
 # ─────────────────────────────────────────────
 
 import argparse
@@ -55,6 +66,7 @@ import os
 import re
 import sys
 import unicodedata
+from collections import Counter
 from datetime import datetime
 
 import numpy as np
@@ -148,8 +160,8 @@ def carregar_entrada(caminho):
 
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
-SQL_ULTIMA_DATA = """
-SELECT MAX(date) AS data
+SQL_DATAS = """
+SELECT MIN(date) AS primeira, MAX(date) AS ultima
 FROM   VW_FUNDOS_POSICAO WITH (NOLOCK)
 WHERE  codigo_IAM_fundo = '{fundo}'
 """
@@ -175,14 +187,13 @@ SQL_POSICAO = """
 SELECT  codigo_IAM_ativo AS codigo, isin, date AS data, quantidade, total
 FROM    VW_FUNDOS_POSICAO WITH (NOLOCK)
 WHERE   codigo_IAM_fundo = '{fundo}' AND tipo = 'Fixed Income'
-  AND   date BETWEEN DATEADD(day, -{dias}, '{data}') AND '{data}'
+  AND   date BETWEEN DATEADD(day, -{dias}, '{desde}') AND '{data}'
 """
 
 SQL_CDI = """
-SELECT TOP 1 date AS data, pnl_perc
+SELECT date AS data, pnl_perc
 FROM   FUNDOS_DADOS_INDICES WITH (NOLOCK)
-WHERE  codigo_IAM_indice = 'CDIAcumulado' AND date <= '{data}' AND pnl_perc > 0
-ORDER BY date DESC
+WHERE  codigo_IAM_indice = 'CDIAcumulado' AND pnl_perc > 0
 """
 
 
@@ -199,15 +210,22 @@ def _lista_sql(valores):
     return ", ".join("'" + str(v).replace("'", "''") + "'" for v in valores)
 
 
-def carregar_fundo(query, fundo, data, tipos):
-    """VCRA (todos os tipos), boletas dos ativos dos tipos incluídos e posição de um fundo. data None = última
-    data da posição do fundo."""
-    if data is None:
-        ultima = _consulta(query, SQL_ULTIMA_DATA.format(fundo=fundo), "VW_FUNDOS_POSICAO")["data"].iloc[0]
-        if pd.isna(ultima):
+def carregar_fundo(query, fundo, data, tipos, desde=None):
+    """VCRA (todos os tipos), boletas dos ativos dos tipos incluídos e posição de um fundo até a data. data None =
+    última data da posição do fundo. desde (início da série): None = só a data; "inicio" = primeira data da
+    posição do fundo; ou uma data."""
+    if data is None or desde == "inicio":
+        datas = _consulta(query, SQL_DATAS.format(fundo=fundo), "VW_FUNDOS_POSICAO").iloc[0]
+        if pd.isna(datas["ultima"]):
             raise RuntimeError("sem posição na VW_FUNDOS_POSICAO")
-        data = pd.Timestamp(ultima).date()
-    p = {"fundo": fundo, "data": f"{data:%Y-%m-%d}", "janela": JANELA_BOLETA, "dias": DIAS_PU}
+        data = data or pd.Timestamp(datas["ultima"]).date()
+        if desde == "inicio":
+            desde = pd.Timestamp(datas["primeira"]).date()
+    desde = desde or data
+    if desde > data:
+        raise RuntimeError(f"--desde {desde:%d/%m/%Y} depois da última data, {data:%d/%m/%Y}")
+    p = {"fundo": fundo, "data": f"{data:%Y-%m-%d}", "desde": f"{desde:%Y-%m-%d}", "janela": JANELA_BOLETA,
+         "dias": DIAS_PU}
     vcra = _consulta(query, SQL_VCRA.format(**p), f"VCRAOPRF (até {data:%d/%m/%Y})")
     incluidos = vcra["tipo"].str.strip().str.upper().map(lambda t: tipos.get(t, False)).astype(bool)
     codigos = sorted(vcra.loc[incluidos, "codigo"].dropna().str.strip().unique())
@@ -216,18 +234,56 @@ def carregar_fundo(query, fundo, data, tipos):
         boletas = _consulta(query, SQL_BOLETAS.format(codigos=_lista_sql(codigos), **p), "FUNDOS_OPERACOES",
                             obrigatoria=False)
     posicao = _consulta(query, SQL_POSICAO.format(**p), "VW_FUNDOS_POSICAO")
-    if not (pd.to_datetime(posicao["data"]).dt.normalize() == pd.Timestamp(data)).any():
+    # data de cada linha, para fatiar o que existia em cada data da série
+    dt = {nome: None if df.empty else pd.to_datetime(df["data"]).dt.normalize()
+          for nome, df in (("vcra", vcra), ("boletas", boletas), ("posicao", posicao))}
+    if not (dt["posicao"] == pd.Timestamp(data)).any():
         raise RuntimeError(f"sem posição em {data:%d/%m/%Y} na VW_FUNDOS_POSICAO")
-    return {"vcra": vcra, "boletas": boletas, "posicao": posicao, "data": data}
+    return {"vcra": vcra, "boletas": boletas, "posicao": posicao, "data": data, "desde": desde, "dt": dt}
 
 
-def carregar_cdi(query, data):
+def datas_da_serie(d, frequencia):
+    """Datas em que a carteira é calculada: as datas com posição de renda fixa de d["desde"] a d["data"], todas
+    (diaria) ou a última de cada mês (mensal). Sem --desde, desde = data e sai só a data."""
+    datas = d["dt"]["posicao"].drop_duplicates().sort_values()
+    datas = datas[datas.between(pd.Timestamp(d["desde"]), pd.Timestamp(d["data"]))]
+    if frequencia == "mensal":
+        datas = datas.groupby(datas.dt.to_period("M")).max()
+    return [x.date() for x in datas]
+
+
+def fatiar(d, data):
+    """VCRA, boletas e posição do fundo como as consultas viriam rodando só nessa data: VCRA até a data, boletas
+    até a data + JANELA_BOLETA e posição dos DIAS_PU dias até a data."""
+    ref, dt, boletas = pd.Timestamp(data), d["dt"], d["boletas"]
+    if dt["boletas"] is not None:
+        boletas = boletas[dt["boletas"] <= ref + pd.Timedelta(days=JANELA_BOLETA)]
+    return (d["vcra"][dt["vcra"] <= ref], boletas,
+            d["posicao"][dt["posicao"].between(ref - pd.Timedelta(days=DIAS_PU), ref)])
+
+
+def carregar_cdi(query):
+    """Série do CDIAcumulado (pnl_perc = CDI do dia, em fração), lida uma vez por execução."""
+    cdis = _consulta(query, SQL_CDI, "FUNDOS_DADOS_INDICES (CDIAcumulado)")
+    cdis = cdis.assign(data=pd.to_datetime(cdis["data"]).dt.normalize(), pnl_perc=pd.to_numeric(cdis["pnl_perc"]))
+    return cdis.sort_values("data", kind="stable")
+
+
+def cdi_na_data(cdis, data):
     """CDI a.a. (fração) do CDIAcumulado no último dia até a data, e de onde ele veio."""
-    linha = _consulta(query, SQL_CDI.format(data=f"{data:%Y-%m-%d}"), "FUNDOS_DADOS_INDICES (CDIAcumulado)").iloc[0]
+    ate = cdis[cdis["data"] <= pd.Timestamp(data)]
+    if ate.empty:
+        raise RuntimeError(f"sem CDIAcumulado até {data:%d/%m/%Y}: informe com --cdi")
+    linha = ate.iloc[-1]
     cdi = (1 + float(linha["pnl_perc"])) ** 252 - 1
     if not 0.01 < cdi < 0.5:
         raise RuntimeError(f"CDI de {cdi:.2%} a.a. no CDIAcumulado fora do esperado: informe com --cdi")
-    return cdi, f"CDIAcumulado da FUNDOS_DADOS_INDICES em {pd.Timestamp(linha['data']):%d/%m/%Y}"
+    return cdi, f"CDIAcumulado da FUNDOS_DADOS_INDICES em {linha['data']:%d/%m/%Y}"
+
+
+def _cdi(cdi_fixo, cdis, data):
+    """(CDI a.a. em fração, origem) na data: o --cdi (% a.a.), se veio, ou o CDIAcumulado."""
+    return (cdi_fixo / 100, "informado em --cdi") if cdi_fixo is not None else cdi_na_data(cdis, data)
 
 
 # ── Cálculo ──────────────────────────────────────────────────────────────────
@@ -448,10 +504,29 @@ def calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos):
     return lotes, ativos, consolidar(ativos), avisos
 
 
+def resumo_da_data(data, cdi, lotes, ativos, carteira, avisos):
+    """Linha das abas Fundos e Histórico: taxa e financeiro da carteira e de cada grupo, contagens e avisos por
+    tipo (na ordem da lista, que já vem na ORDEM_AVISOS)."""
+    g = carteira.set_index("grupo").reindex(["CARTEIRA", "%CDI", "CDI+"])
+    return {"data": data, "status": "OK" if pd.notna(g.at["CARTEIRA", "financeiro"]) else "sem ativo com taxa e PU",
+            "taxa_carteira": g.at["CARTEIRA", "taxa_cdi_mais"], "financeiro": g.at["CARTEIRA", "financeiro"],
+            "taxa_pct": g.at["%CDI", "taxa_media"], "fin_pct": g.at["%CDI", "financeiro"],
+            "taxa_mais": g.at["CDI+", "taxa_media"], "fin_mais": g.at["CDI+", "financeiro"],
+            "n_lotes": len(lotes), "n_ativos": int(ativos["qt_lotes"].notna().sum()), "cdi": cdi * 100,
+            "n_avisos": len(avisos),
+            "avisos": " · ".join(f"{a} ({n})" for a, n in Counter(av["aviso"] for av in avisos).items())}
+
+
 # ── Saída ────────────────────────────────────────────────────────────────────
 TAXA, PU, QTD, VALOR, DATA = "0.0000", "#,##0.000000", "#,##0", "#,##0.00", "dd/mm/yyyy"
 FUNDO = ("fundo", "Fundo", None)
 COLUNAS = {
+    "Histórico": [FUNDO, ("data", "Data", DATA), ("status", "Status", None),
+                  ("taxa_carteira", "Carteira em CDI+ equivalente", TAXA), ("financeiro", "Financeiro (R$)", VALOR),
+                  ("taxa_pct", "%CDI: taxa média (% do CDI)", TAXA), ("fin_pct", "%CDI: financeiro (R$)", VALOR),
+                  ("taxa_mais", "CDI+: spread médio", TAXA), ("fin_mais", "CDI+: financeiro (R$)", VALOR),
+                  ("n_ativos", "Ativos", "0"), ("n_lotes", "Lotes em aberto", "0"), ("cdi", "CDI (% a.a.)", TAXA),
+                  ("n_avisos", "Avisos", "0"), ("avisos", "Avisos por tipo", None)],
     "Carteira": [FUNDO, ("data", "Data", DATA), ("grupo", "Grupo", None), ("n_ativos", "Ativos", "0"),
                  ("financeiro", "Financeiro (R$)", VALOR),
                  ("taxa_media", "Taxa média (CDI+: spread; %CDI: % do CDI)", TAXA),
@@ -485,12 +560,15 @@ COLUNAS = {
 
 
 def salvar_xlsx(caminho, tabelas, notas):
-    """tabelas: {aba: DataFrame} com as abas de COLUNAS; as notas vão embaixo da aba Carteira."""
+    """tabelas: {aba: DataFrame} com as abas de COLUNAS (a que não vier fica de fora, como o Histórico sem
+    --desde); as notas vão embaixo da aba Carteira."""
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
 
     with pd.ExcelWriter(caminho, engine="openpyxl") as xw:
         for aba, colunas in COLUNAS.items():
+            if aba not in tabelas:
+                continue
             df = tabelas[aba].reindex(columns=[c for c, _, _ in colunas])
             df.rename(columns={c: t for c, t, _ in colunas}).to_excel(xw, sheet_name=aba, index=False)
             ws = xw.book[aba]
@@ -528,8 +606,28 @@ def imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi):
         print(f"[OK] {nome}: {r.n_ativos} ativos, R$ {_br(r.financeiro, 0)} — {taxa}")
 
 
+def _situacao(r):
+    """(etiqueta, texto) de uma linha das abas Fundos ou Histórico, para o console."""
+    if r["status"] == "OK":
+        n = r["n_avisos"]
+        return "OK", (f"carteira {_cdi_mais(r['taxa_carteira'])} ({r['n_ativos']} ativos, "
+                      f"R$ {_br(r['financeiro'], 0)}; {n} aviso{'' if n == 1 else 's'})")
+    if r["status"].startswith("erro: "):
+        return "ERRO", r["status"][len("erro: "):]
+    return "AVISO", r["status"]
+
+
 def _data(s):
     return datetime.strptime(s, "%d/%m/%Y").date()
+
+
+def _desde(s):
+    if _chave(s) == "inicio":
+        return "inicio"
+    try:
+        return _data(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{s!r}: use dd/mm/aaaa ou inicio") from None
 
 
 def main(argv=None):
@@ -548,6 +646,11 @@ def main(argv=None):
                     help="só estes fundos, no lugar da aba Fundos (tipos e correções continuam vindo do Excel)")
     ap.add_argument("--data", type=_data,
                     help="data de referência dd/mm/aaaa (padrão: última data da posição de cada fundo)")
+    ap.add_argument("--desde", nargs="?", const="inicio", type=_desde, metavar="DATA",
+                    help="série: recalcula a carteira em cada data desde dd/mm/aaaa ou, sem data, desde o início do "
+                         "fundo, e grava a aba Histórico")
+    ap.add_argument("--frequencia", type=_chave, choices=("mensal", "diaria"),
+                    help="datas da série: mensal (última data com posição de cada mês, padrão) ou diaria")
     ap.add_argument("--fonte", choices=("boleta", "vcra"), default="boleta",
                     help="taxa dos CDI+: boleta (negociada, padrão) ou vcra (pelo PU pago); %%CDI usa sempre a boleta")
     ap.add_argument("--cdi", type=float, help="CDI em %% a.a. para converter %%CDI em CDI+ equivalente "
@@ -558,6 +661,13 @@ def main(argv=None):
     for fundo in args.fundo or []:
         if not re.fullmatch(r"\w+", fundo):
             ap.error(f"--fundo inválido: {fundo!r}")
+    if args.frequencia and not args.desde:
+        ap.error("--frequencia só vale com --desde")
+    if args.desde not in (None, "inicio") and args.data and args.desde > args.data:
+        ap.error("--desde depois de --data")
+    args.frequencia = args.frequencia or "mensal"
+    serie = "" if not args.desde else f"{args.frequencia}, desde " + (
+        "o início do fundo" if args.desde == "inicio" else f"{args.desde:%d/%m/%Y}")
 
     if os.path.exists(args.entrada):
         try:
@@ -574,7 +684,7 @@ def main(argv=None):
     if not fundos:
         ap.error(f"nenhum fundo para rodar na aba Fundos de {args.entrada}")
     print(f"[INFO] {len(fundos)} fundo(s) | tipos incluídos: {', '.join(t for t, s in tipos.items() if s)} | "
-          f"taxa dos CDI+: {args.fonte}")
+          f"taxa dos CDI+: {args.fonte}{f' | série {serie}' if serie else ''}")
 
     sys.path.insert(0, AQUI)
     from sql_connection import disconnect, get_connection, query
@@ -584,37 +694,50 @@ def main(argv=None):
         sys.exit(f"[ERRO] conexão com o banco: {e}")
 
     partes = {aba: [] for aba in ("Carteira", "Ativos", "Lotes", "Avisos")}
-    resumo, cdis = [], {}
+    resumo, historico, cdis = [], [], None
     try:
         for fundo, nome in fundos:
             print(f"\n── {fundo}{f' ({nome})' if nome else ''} {'─' * 40}")
             info = {"fundo": fundo, "nome": nome}
             resumo.append(info)
+            corr = correcoes.get(fundo, {})
             try:
-                d = carregar_fundo(query, fundo, args.data, tipos)
-                if args.cdi is not None:
-                    cdi, origem = args.cdi / 100, "informado em --cdi"
-                else:
-                    if d["data"] not in cdis:
-                        cdis[d["data"]] = carregar_cdi(query, d["data"])
-                    cdi, origem = cdis[d["data"]]
+                d = carregar_fundo(query, fundo, args.data, tipos, args.desde)
+                if args.cdi is None and cdis is None:
+                    cdis = carregar_cdi(query)
+                dias = datas_da_serie(d, args.frequencia)
+                if args.desde:
+                    print(f"[INFO] série {args.frequencia}: {len(dias)} datas, de {dias[0]:%d/%m/%Y} a "
+                          f"{dias[-1]:%d/%m/%Y}")
+                for dia in dias[:-1]:  # a última é a data de referência, calculada abaixo com o detalhe
+                    try:
+                        vcra, boletas, posicao = fatiar(d, dia)
+                        # lote que ainda não existia na data não conta como correção não aplicada
+                        lancados = set(vcra["CD"].str.strip())
+                        cdi = _cdi(args.cdi, cdis, dia)[0]
+                        r = resumo_da_data(dia, cdi, *calcular(
+                            vcra, boletas, posicao, dia, cdi, args.fonte,
+                            {cd: c for cd, c in corr.items() if cd in lancados}, tipos))
+                    except Exception as e:  # noqa — erro numa data da série não para as outras
+                        r = {"data": dia, "status": f"erro: {e}"}
+                    historico.append({"fundo": fundo, **r})
+                    etiqueta, texto = _situacao(r)
+                    print(f"[{etiqueta}] {dia:%d/%m/%Y}: {texto}")
+                cdi, origem = _cdi(args.cdi, cdis, d["data"])
                 print(f"[INFO] {d['data']:%d/%m/%Y} | CDI {_br(cdi * 100)}% a.a. ({origem}) | "
-                      f"{len(correcoes.get(fundo, {}))} correção(ões) manual(is)")
+                      f"{len(corr)} correção(ões) manual(is)")
                 if d["boletas"].empty:
                     print("[AVISO] nenhuma boleta na FUNDOS_OPERACOES: CDI+ pela VCRA e %CDI sem taxa")
-                lotes, ativos, carteira, avisos = calcular(d["vcra"], d["boletas"], d["posicao"], d["data"], cdi,
-                                                           args.fonte, correcoes.get(fundo, {}), tipos)
+                lotes, ativos, carteira, avisos = calcular(*fatiar(d, d["data"]), d["data"], cdi, args.fonte, corr,
+                                                           tipos)
                 imprimir_fundo(lotes, ativos, carteira, avisos, d["data"], cdi)
             except Exception as e:  # noqa — erro num fundo (dado faltando, consulta) não para os outros
                 print(f"[ERRO] {fundo}: {e}")
                 info["status"] = f"erro: {e}"
                 continue
-            total = carteira[carteira["grupo"] == "CARTEIRA"]
-            info.update(data=d["data"], cdi=cdi * 100, cdi_origem=origem, n_lotes=len(lotes),
-                        n_ativos=int(ativos["qt_lotes"].notna().sum()), n_avisos=len(avisos),
-                        status="OK" if len(total) else "sem ativo com taxa e PU",
-                        taxa_carteira=total["taxa_cdi_mais"].iloc[0] if len(total) else np.nan,
-                        financeiro=total["financeiro"].iloc[0] if len(total) else np.nan)
+            info.update(resumo_da_data(d["data"], cdi, lotes, ativos, carteira, avisos), cdi_origem=origem)
+            if args.desde:
+                historico.append(info)
             partes["Carteira"].append(carteira.assign(fundo=fundo, data=pd.Timestamp(d["data"])))
             partes["Ativos"].append(ativos.assign(fundo=fundo))
             partes["Lotes"].append(lotes.assign(fundo=fundo))
@@ -628,12 +751,15 @@ def main(argv=None):
         tabelas["Lotes"] = tabelas["Lotes"].sort_values(["fundo", "grupo", "codigo", "dt_compra"]).assign(
             boleta_ok=lambda x: x["boleta_ok"].map({True: "sim", False: "não"}))
     tabelas["Fundos"] = pd.DataFrame(resumo)
+    if args.desde:
+        tabelas["Histórico"] = pd.DataFrame(historico)
     datas = [r["data"] for r in resumo if "data" in r]
     ref = args.data or (max(datas) if datas else datetime.now().date())
     tabelas["Parâmetros"] = pd.DataFrame([
         ("Entrada", args.entrada if os.path.exists(args.entrada) else "(sem arquivo: --fundo e tipos padrão)"),
         ("Fundos", ", ".join(f for f, _ in fundos)),
         ("Data de referência", f"{args.data:%d/%m/%Y}" if args.data else "última data da posição de cada fundo"),
+        ("Série (aba Histórico)", serie or "não: só a data de referência"),
         ("Taxa dos CDI+", "boleta (negociada)" if args.fonte == "boleta" else "VCRA (pelo PU pago)"),
         ("Taxa dos %CDI", "boleta (% do CDI)"),
         ("CDI para %CDI → CDI+", f"{_br(args.cdi, 4)}% a.a. (--cdi)" if args.cdi is not None
@@ -651,9 +777,14 @@ def main(argv=None):
              "CDI+ equivalente: %CDI convertido com CDI flat; o CDI usado em cada fundo está na aba Fundos.",
              "Médias ponderadas pelo financeiro (qtd em aberto x último PU da posição); ativo sem taxa ou sem PU "
              "fica de fora (aba Avisos)."]
+    if args.desde:
+        notas.append(f"Histórico: o mesmo cálculo em cada data, só com o que existia nela (VCRA e boletas até a "
+                     f"data, PU dos {DIAS_PU} dias anteriores, CDI do dia). Carteira, Ativos, Lotes e Avisos são da "
+                     f"última data.")
 
     os.makedirs(SAIDA_DIR, exist_ok=True)
-    arquivo = f"taxa_media_{fundos[0][0]}_{ref:%Y%m%d}.xlsx" if len(fundos) == 1 else f"taxa_media_{ref:%Y%m%d}.xlsx"
+    prefixo = "taxa_media_historico" if args.desde else "taxa_media"
+    arquivo = f"{prefixo}_{fundos[0][0]}_{ref:%Y%m%d}.xlsx" if len(fundos) == 1 else f"{prefixo}_{ref:%Y%m%d}.xlsx"
     xlsx = os.path.join(SAIDA_DIR, arquivo)
     try:
         salvar_xlsx(xlsx, tabelas, notas)
@@ -662,13 +793,9 @@ def main(argv=None):
 
     print(f"\n── Resumo {'─' * 40}")
     for r in resumo:
-        if r["status"] == "OK":
-            print(f"[OK] {r['fundo']} em {r['data']:%d/%m/%Y}: carteira {_cdi_mais(r['taxa_carteira'])} "
-                  f"({r['n_ativos']} ativos, R$ {_br(r['financeiro'], 0)}; {r['n_avisos']} avisos)")
-        elif r["status"].startswith("erro: "):
-            print(f"[ERRO] {r['fundo']}: {r['status'][len('erro: '):]}")
-        else:
-            print(f"[AVISO] {r['fundo']}: {r['status']}")
+        etiqueta, texto = _situacao(r)
+        quando = f" em {r['data']:%d/%m/%Y}" if etiqueta == "OK" else ""
+        print(f"[{etiqueta}] {r['fundo']}{quando}: {texto}")
     print(f"[OK] {xlsx}")
     if any(r["status"].startswith("erro") for r in resumo):
         sys.exit(1)

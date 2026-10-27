@@ -2,28 +2,35 @@
 %% Seta cheia = chamada ou dado passado; seta tracejada = leitura de arquivo ou de tabela.
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo · --data · --fonte · --cdi"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
-    fnMain["main(argv)<br/>argparse · valida --fundo e --cdi<br/>um fundo por vez: erro num fundo não para os outros"]
+    fnMain["main(argv)<br/>argparse · valida<br/>os argumentos<br/>fundo a fundo e, com<br/>--desde, data a data<br/>erro num fundo ou data<br/>não para os outros"]
 
-    subgraph LEITURA["Leitura do Excel"]
+    subgraph LEITURA["Excel e argumentos"]
         fnEntrada["carregar_entrada(caminho)<br/>→ fundos · tipos · correções<br/>sem aba Tipos: TIPOS_PADRAO"]
         fnAba["_aba(abas, nome, colunas, caminho)"]
         fnAux["_chave · _sim · _texto · _numero"]
+        fnArgs["_data · _desde<br/>--data e --desde: dd/mm/aaaa ou inicio"]
     end
 
     subgraph CARGA["Carga do banco · NOLOCK"]
-        fnFundo["carregar_fundo(query, fundo, data, tipos)<br/>→ vcra · boletas · posicao · data<br/>sem --data: última data da posição"]
-        fnCdi["carregar_cdi(query, data)<br/>→ CDI a.a. e origem<br/>uma vez por data, sem --cdi"]
-        sqlUlt["SQL_ULTIMA_DATA"]
+        fnFundo["carregar_fundo(query,<br/>fundo, data, tipos, desde)<br/>→ vcra · boletas · posicao<br/>data · desde · dt<br/>sem --data: última data<br/>da posição<br/>--desde sozinho: primeira<br/>data da posição"]
+        fnCdi["carregar_cdi(query)<br/>→ série do CDIAcumulado<br/>uma vez por execução, sem --cdi"]
+        sqlDatas["SQL_DATAS<br/>primeira e última data do fundo"]
         sqlVcra["SQL_VCRA<br/>todos os tipos · C e V · DT até a data"]
         fnLista["_lista_sql(valores)"]
         sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>até a data + JANELA_BOLETA"]
-        sqlPos["SQL_POSICAO<br/>Fixed Income · DIAS_PU dias"]
+        sqlPos["SQL_POSICAO<br/>Fixed Income · do início − DIAS_PU até a data"]
         sqlCdi["SQL_CDI<br/>CDIAcumulado · pnl_perc"]
         fnConsulta["_consulta(query, sql, nome, obrigatoria)<br/>resultado vazio = erro, menos nas boletas"]
+    end
+
+    subgraph SERIE["Datas do cálculo"]
+        fnDatas["datas_da_serie(d, frequencia)<br/>→ a data de referência ou,<br/>com --desde, as datas<br/>da série (mensal ou diária)"]
+        fnFatiar["fatiar(d, data)<br/>→ vcra · boletas · posicao<br/>como na data<br/>VCRA: até a data<br/>boletas: + JANELA_BOLETA<br/>posição: DIAS_PU dias"]
+        fnCdiData["_cdi(cdi_fixo, cdis, data)<br/>cdi_na_data(cdis, data)<br/>→ CDI a.a. e origem<br/>--cdi ou o último<br/>CDIAcumulado até a data"]
     end
 
     subgraph CONN["sql_connection.py"]
@@ -39,7 +46,7 @@ flowchart LR
         tbIdx[("FUNDOS_DADOS_INDICES")]
     end
 
-    subgraph CALC["Cálculo de um fundo"]
+    subgraph CALC["Cálculo de uma data"]
         fnCalc["calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos)<br/>→ lotes · ativos · carteira · avisos<br/>ordena os avisos por ORDEM_AVISOS"]
         fnNorm["_normalizar(df, textos, datas, numeros)"]
         fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador CDI"]
@@ -50,19 +57,22 @@ flowchart LR
         fnResumo["_resumo(grupo, g)"]
         fnMedia["_media_ponderada(df, chave, valor, peso)"]
         fnAviso["_aviso(avisos, aviso, ativo, detalhe, lote)"]
+        fnResumoData["resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)<br/>→ linha das abas Fundos e Histórico"]
     end
 
     subgraph FMT["Console e Excel"]
-        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)"]
+        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)<br/>detalhe da data de referência"]
+        fnSit["_situacao(r)<br/>linha de cada data da série e do resumo"]
         fnBr["_br(x, casas)<br/>1.234,56"]
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
-        fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS"]
+        fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
     end
 
-    arqXlsx[("Saída: output/taxa_media_AAAAMMDD.xlsx<br/>Carteira · Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
-    console(["Saída: console<br/>[INFO] · [OK] · [AVISO] · [ERRO]<br/>resumo por fundo"])
+    arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes · Avisos<br/>Fundos · Parâmetros")]
+    console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · resumo<br/>por fundo"])
 
     cli --> fnMain
+    fnMain --> fnArgs
     fnMain -->|"--entrada"| fnEntrada
     xlsxIn -.-> fnEntrada
     fnEntrada --> fnAba
@@ -70,22 +80,25 @@ flowchart LR
     fnAba --> fnAux
     fnMain -->|"antes dos fundos"| cnGet
 
-    fnMain -->|"para cada fundo: fundo, data, tipos"| fnFundo
-    fnMain -->|"data do fundo"| fnCdi
-    fnFundo --> sqlUlt & sqlVcra & sqlBol & sqlPos
+    fnMain -->|"para cada fundo: fundo, data, tipos, desde"| fnFundo
+    fnMain -->|"uma vez, sem --cdi"| fnCdi
+    fnFundo --> sqlDatas & sqlVcra & sqlBol & sqlPos
     fnFundo --> fnLista
     fnLista -->|"códigos"| sqlBol
     fnCdi --> sqlCdi
-    sqlUlt & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
+    sqlDatas & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
     fnConsulta --> cnQuery
     fnMain -->|"no fim, sempre"| cnDisc
-    sqlUlt -.-> tbPos
+    sqlDatas -.-> tbPos
     sqlPos -.-> tbPos
     sqlVcra -.-> tbVcra
     sqlBol -.-> tbFo
     sqlCdi -.-> tbIdx
 
-    fnMain -->|"dados do fundo, cdi, fonte, correções do fundo, tipos"| fnCalc
+    fnMain -->|"dados do fundo"| fnDatas
+    fnMain -->|"cada data"| fnFatiar
+    fnMain -->|"cada data, série do CDI"| fnCdiData
+    fnMain -->|"dados da data, cdi, fonte, correções, tipos"| fnCalc
     fnCalc --> fnNorm
     fnCalc -->|"1 · vcra"| fnEscopo
     fnCalc -->|"2 · VCRA no escopo, boletas"| fnLotes
@@ -100,12 +113,17 @@ flowchart LR
     fnLotes --> fnBr
     fnAtivos --> fnBr
     fnCons --> fnResumo
+    fnMain -->|"lotes, ativos, carteira, avisos da data"| fnResumoData
 
     fnMain -->|"tabelas de todos os fundos, notas"| fnXlsx
     fnXlsx --> arqXlsx
     fnMain --> fnImp
+    fnMain --> fnSit
     fnImp --> fnBr
     fnImp --> fnCdiMais
+    fnSit --> fnCdiMais
+    fnSit --> fnBr
     fnCdiMais --> fnBr
     fnImp --> console
-    fnMain -->|"resumo e erros"| console
+    fnSit --> console
+    fnMain -->|"erros"| console
