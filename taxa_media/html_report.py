@@ -1371,8 +1371,8 @@ GLOSSARIO = [
 ]
 
 NAVEGACAO = [
-    "As abas de cima trocam a visão; o seletor FUNDO, à direita, lista os fundos da rodada e troca o fundo em "
-    "todas elas.",
+    "As abas de cima trocam a visão; o seletor FUNDO, à esquerda delas, lista os fundos da rodada e troca o fundo "
+    "em todas elas.",
     "Clique no título de uma coluna para ordenar; a caixa de busca e os seletores acima de cada tabela filtram as "
     "linhas.",
     "Clique num ativo (tabela ou gráfico) para abrir a ficha dele: lotes em aberto, trades e avisos.",
@@ -1467,8 +1467,9 @@ def _css():
                      cursor: pointer; transition: all .17s; white-space: nowrap; letter-spacing: .04em; }}
     .perf-tab-btn:hover {{ background: {ITAU_ORANGE}18; }}
     .perf-tab-btn.active {{ background: {ITAU_ORANGE}; color: #fff; box-shadow: 0 2px 10px {ITAU_ORANGE}55; }}
-    .nav-fundo {{ margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .82rem;
-                  font-weight: 700; color: {ITAU_DARK}; text-transform: uppercase; letter-spacing: .04em; }}
+    .nav-fundo {{ display: flex; align-items: center; gap: 8px; font-size: .82rem; margin-right: 10px;
+                  padding-right: 16px; border-right: 2px solid {ITAU_GRAY}; font-weight: 700; color: {ITAU_DARK};
+                  text-transform: uppercase; letter-spacing: .04em; }}
     .nav-fundo select {{ min-width: 220px; max-width: 420px; font-weight: 600; color: {ITAU_DARK};
                          text-transform: none; letter-spacing: 0; }}
     .perf-pane {{ display: none; animation: fadeIn .2s; }}
@@ -1643,7 +1644,8 @@ def _css():
                 border: 2px solid {ITAU_DARK}; border-radius: 20px; padding: 6px 16px; white-space: nowrap; }}
     .nav-cal:hover {{ background: {ITAU_DARK}; color: #fff; }}
     /* o fundo é escolhido no índice, que avisa o relatório */
-    body.embutido .hdr, body.embutido .footer, body.embutido .nav-direita {{ display: none; }}
+    body.embutido .hdr, body.embutido .footer, body.embutido .nav-direita,
+    body.embutido .nav-fundo {{ display: none; }}
     body.embutido .perf-nav {{ padding: 10px 24px; }}
     body.embutido .content {{ padding: 20px 24px 40px; }}
     table[data-abre-dia] tbody tr {{ cursor: pointer; }}
@@ -1700,7 +1702,7 @@ def _css():
       .brand span {{ display: none; }}
       .grid2 {{ grid-template-columns: 1fr; }}
       .filtro-busca {{ min-width: 0; width: 100%; }}
-      .nav-fundo {{ margin-left: 0; }}
+      .nav-fundo {{ border-right: none; padding-right: 0; flex-basis: 100%; }}
     }}
     @media (max-width: 980px) {{
       .cal-layout {{ grid-template-columns: 1fr; height: auto; }}
@@ -2109,8 +2111,8 @@ _ABAS_FUNDO = [("resumo", "RESUMO", _aba_resumo), ("historico", "HISTÓRICO", _a
 
 
 def _seletor_fundo(fundos):
-    """Seletor de fundo da barra de abas, sempre visível (com um fundo só, mostra onde se escolhe); fundos:
-    [(fundo, nome)], os fundos da rodada."""
+    """Seletor de fundo no começo da barra de abas, à esquerda delas e sempre visível (com um fundo só, mostra onde
+    se escolhe); fundos: [(fundo, nome)], os fundos da rodada."""
     opcoes = "".join(f'<option value="{_esc(fundo)}">{_esc(fundo)}{" — " + _esc(nome) if nome else ""}</option>'
                      for fundo, nome in fundos)
     return f'<label class="nav-fundo">Fundo <select id="fundo-sel" class="mes-select">{opcoes}</select></label>'
@@ -2187,13 +2189,12 @@ def gerar_html(caminho, tabelas, notas=(), dia=None, trades_desde=None):
         abas.append((aba, rotulo, "".join(blocos)))
     abas.append(("metodologia", "METODOLOGIA", _aba_metodologia(param_df, list(notas))))
 
-    nav = "".join(f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
-                  for i, (aba, rotulo, _) in enumerate(abas))
-    direita = [_seletor_fundo([(f["fundo"], f["nome"]) for f in fundos])] if fundos else []
+    nav = (_seletor_fundo([(f["fundo"], f["nome"]) for f in fundos]) if fundos else "") + "".join(
+        f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
+        for i, (aba, rotulo, _) in enumerate(abas))
     if dia is not None:
-        direita.append('<a class="nav-cal" href="../index.html" title="Calendário com todos os dias">CALENDÁRIO</a>')
-    if direita:
-        nav += f'<div class="nav-direita">{"".join(direita)}</div>'
+        nav += ('<div class="nav-direita"><a class="nav-cal" href="../index.html" title="Calendário com todos os dias">'
+                'CALENDÁRIO</a></div>')
     paineis = "".join(f'<div class="perf-pane{" active" if i == 0 else ""}" data-aba="{aba}">{html}</div>'
                       for i, (aba, _, html) in enumerate(abas))
 
@@ -2377,9 +2378,9 @@ def gerar_indice(pasta_saida, subpasta="diario"):
 </div>"""
     abas = [("calendario", "CALENDÁRIO", calendario), ("historico", "HISTÓRICO", "".join(blocos_hist)),
             ("trades", "TRADES", "".join(blocos_trades))]
-    nav = "".join(f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
-                  for i, (aba, rotulo, _) in enumerate(abas))
-    nav += f'<div class="nav-direita">{_seletor_fundo([(f, nomes.get(f, "")) for f in fundos])}</div>'
+    nav = _seletor_fundo([(f, nomes.get(f, "")) for f in fundos]) + "".join(
+        f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
+        for i, (aba, rotulo, _) in enumerate(abas))
     paineis = "".join(f'<div class="perf-pane{" active" if i == 0 else ""}" data-aba="{aba}">{html}</div>'
                       for i, (aba, _, html) in enumerate(abas))
     dias = sorted(resumos)

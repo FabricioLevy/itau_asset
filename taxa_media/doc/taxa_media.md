@@ -112,7 +112,7 @@ Ao lado do Excel sai um `.html` com o mesmo nome, gerado pelo `html_report.py` n
 
 Para navegar:
 
-- O seletor FUNDO, à direita das abas, lista os fundos da rodada, com o nome da aba Fundos, e troca o fundo em todas as abas. Para ter vários fundos no relatório, basta pôr os fundos na aba Fundos do `input/fundos.xlsx` (rodar = S) e rodar sem `--fundo`.
+- O seletor FUNDO, no começo da barra de abas (à esquerda), lista os fundos da rodada, com o nome da aba Fundos, e troca o fundo em todas as abas. Para ter vários fundos no relatório, basta pôr os fundos na aba Fundos do `input/fundos.xlsx` (rodar = S) e rodar sem `--fundo`.
 - Cada tabela tem busca por texto, sem acento nem caixa, e seletores (grupo, fonte da taxa, operação, tipo de aviso). O contador mostra quantas linhas sobraram.
 - Clicar num ativo, numa tabela ou num gráfico, abre a ficha dele: o nome e a descrição do papel, cartões com taxa, financeiro, peso e quantidades, o cadastro e os lotes, trades e avisos do ativo. O cadastro vem em três quadros (emissão; crédito e risco; identificação), com as alterações de valor (ex.: troca do emissor) e, num bloco que abre no clique, todos os campos, com a data de cada valor e a fonte. A aba ATIVOS também ganha as colunas Grupo econômico e Rating, e a busca da tabela acha os ativos por elas.
 - Na aba TRADES, clicar num dia, no gráfico ou na tabela Trades por dia, filtra a tabela de trades. O botão do dia limpa o filtro.
