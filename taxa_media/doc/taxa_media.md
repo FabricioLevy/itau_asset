@@ -10,6 +10,8 @@ taxa_media/
 ├── input/fundos.xlsx     fundos, tipos de papel e correções manuais
 ├── sql/taxa_media.sql    o mesmo cálculo em T-SQL, para um fundo no SSMS
 ├── output/               Excel e relatório HTML gerados
+│   ├── index.html        com --diario: calendário com todos os dias
+│   └── diario/           com --diario: um relatório por dia (aaaammdd.html)
 └── doc/
     ├── taxa_media.md     esta documentação
     └── fluxograma.mmd    relações do código (Mermaid)
@@ -34,6 +36,8 @@ Além da carteira, o script mostra os trades: cada compra e venda, com a taxa pe
 
 Junto com o Excel sai um relatório HTML com as mesmas tabelas, gráficos e a ficha de cada ativo (seção 2, Relatório HTML).
 
+Com `--diario`, sai também um relatório por dia na pasta `output/diario/` e o `output/index.html`, com um calendário para escolher o dia (seção 2, Relatórios diários e calendário).
+
 ## 2. Como rodar
 
 O script precisa rodar numa máquina com acesso ao DBSX337 (servidor SQNPRC028). A conexão é a do `sql_connection.py` da pasta e exige:
@@ -52,6 +56,8 @@ python __main__.py --fonte vcra --cdi 13.65
 python __main__.py --fundo ITAIMOBCDIFII --desde            (série mensal desde o início do fundo)
 python __main__.py --desde 01/06/2026 --frequencia diaria   (série diária a partir de 01/06/2026)
 python __main__.py --html output/taxa_media_historico_ITAIMOBCDIFII_20261023.xlsx   (só o relatório HTML)
+python __main__.py --fundo ITAIMOBCDIFII --desde --diario   (um relatório por dia desde o início e o index.html)
+python __main__.py --diario                                 (a última data, somada aos dias que já estão na pasta)
 ```
 
 | Parâmetro | Padrão | O que faz |
@@ -64,6 +70,7 @@ python __main__.py --html output/taxa_media_historico_ITAIMOBCDIFII_20261023.xls
 | `--fonte` | `boleta` | taxa dos CDI+: `boleta` (negociada) ou `vcra` (custódia, calculada pelo PU pago). Os %CDI usam sempre a boleta |
 | `--cdi` | `CDIAcumulado` da `FUNDOS_DADOS_INDICES` na data de cada fundo | CDI em % a.a., usado só para converter %CDI em CDI+ equivalente |
 | `--html` | — | só regera o relatório HTML de um `.xlsx` já gravado, sem o banco e sem o Excel de entrada; o `.html` sai ao lado do `.xlsx`. Serve para gerar o relatório numa máquina sem acesso ao DBSX337 |
+| `--diario` | — | grava também um relatório por data em `output/diario/aaaammdd.html` e refaz o `output/index.html`. Com `--desde`, a série passa a ser diária (salvo `--frequencia mensal`) |
 
 Sem o Excel, o script só roda com `--fundo`; nesse caso usa os tipos padrão (seção 3) e nenhuma correção.
 
@@ -80,6 +87,7 @@ Cada rodada grava um Excel em `output/` e, ao lado, o relatório HTML com o mesm
 | Trades por dia | uma linha por dia e operação (compra ou venda): trades, ativos, financeiro e taxa média por grupo e em CDI+ equivalente; os trades sem taxa à parte. Cobre todo o histórico até a data ou, com `--desde`, a partir do início da série |
 | Trades | cada compra e venda da VCRA no escopo: ativo, lote, quantidade, PU, financeiro, boleta casada, taxa da VCRA, taxa usada e de onde ela veio |
 | Avisos | tudo o que merece conferência (seção 8) |
+| Cadastro | as versões de cada campo do `FUNDOS_CADASTRO_ATIVOS` dos ativos, até a data: ativo, campo, valor, desde quando e fonte. É o que o HTML mostra na ficha do ativo (e o que o `--html` relê); não tem a coluna Fundo, porque o cadastro é do ativo |
 | Fundos | uma linha por fundo: data, status, taxa da carteira, financeiro, contagens e CDI usado |
 | Parâmetros | entrada, fonte, tipos incluídos e excluídos, regras de casamento e correções aplicadas |
 
@@ -106,12 +114,46 @@ Para navegar:
 
 - Com mais de um fundo, o seletor à direita das abas troca o fundo em todas as abas.
 - Cada tabela tem busca por texto, sem acento nem caixa, e seletores (grupo, fonte da taxa, operação, tipo de aviso). O contador mostra quantas linhas sobraram.
-- Clicar num ativo, numa tabela ou num gráfico, abre a ficha dele: cartões com taxa, financeiro, peso e quantidades, e os lotes, trades e avisos do ativo.
+- Clicar num ativo, numa tabela ou num gráfico, abre a ficha dele: o nome e a descrição do papel, cartões com taxa, financeiro, peso e quantidades, o cadastro e os lotes, trades e avisos do ativo. O cadastro vem em três quadros (emissão; crédito e risco; identificação), com as alterações de valor (ex.: troca do emissor) e, num bloco que abre no clique, todos os campos, com a data de cada valor e a fonte. A aba ATIVOS também ganha as colunas Grupo econômico e Rating, e a busca da tabela acha os ativos por elas.
 - Na aba TRADES, clicar num dia, no gráfico ou na tabela Trades por dia, filtra a tabela de trades. O botão do dia limpa o filtro.
 - Os cartões com contagem (fonte da taxa, tipo de aviso, compras, vendas) também filtram a tabela da aba.
 - Nos gráficos de série, o tooltip mostra todas as séries na data mais próxima do mouse, e as caixas da legenda escondem uma linha.
 
 As cores seguem a entidade em todo o relatório: carteira laranja, CDI+ azul e %CDI roxo, o mesmo trio do attribution. Compras ficam em verde-azulado e vendas em framboesa. As duas combinações (carteira, CDI+ e %CDI; carteira, compras e vendas) passam no teste de separação para daltonismo.
+
+### Relatórios diários e calendário (`--diario`)
+
+Com `--diario`, cada data calculada vira um relatório próprio, e o `index.html` junta todos:
+
+```
+output/
+├── index.html          calendário com todos os dias da pasta e as abas consolidadas
+└── diario/
+    ├── 20260401.html   relatório do dia 01/04/2026
+    ├── 20260402.html
+    └── ...
+```
+
+O relatório de cada dia tem o mesmo layout do relatório normal, com as abas RESUMO, ATIVOS, LOTES, TRADES, AVISOS e METODOLOGIA, e FUNDOS quando há mais de um fundo. Mostra a carteira, os ativos, os lotes e os avisos daquela data, calculados só com o que existia nela, como na série do `--desde`. Os trades são os executados desde a data anterior da série até a data: numa série diária, os do dia; numa mensal, os do mês. Assim cada trade aparece em um relatório só. O arquivo abre sozinho no navegador e tem um botão CALENDÁRIO que volta para o `index.html`.
+
+O `index.html` tem três abas:
+
+| Aba | O que mostra |
+|---|---|
+| CALENDÁRIO | à esquerda, o calendário do mês: cada dia com relatório mostra embaixo a taxa da carteira em CDI+ equivalente, e um ponto verde quando teve trade. Abaixo, os botões de dia anterior e próximo e o quadro do dia escolhido (carteira, grupos, financeiro, ativos e lotes, avisos, CDI, compras e vendas). À direita, o relatório do dia |
+| HISTÓRICO | a série de todos os dias da pasta (o mesmo gráfico e a mesma tabela da aba HISTÓRICO do relatório). Clicar numa data, no gráfico ou na tabela, abre o dia no calendário |
+| TRADES | compras e vendas de todos os dias, com o gráfico da taxa média do dia e a tabela Trades por dia. Clicar num dia abre o relatório dele na aba TRADES |
+
+Para navegar no calendário:
+
+- Clique num dia ou use as setas ← e → do teclado. O seletor de mês e os botões ‹ › trocam o mês.
+- A aba aberta no relatório continua aberta quando você troca de dia. Dá para ver os ATIVOS de um dia e passar para o seguinte direto nos ATIVOS.
+- Com mais de um fundo, o seletor de fundo do índice vale para o calendário, o quadro do dia, as abas consolidadas e o relatório aberto.
+- "Abrir este dia em nova aba" abre o arquivo do dia sozinho.
+
+O índice é refeito do zero a cada rodada com `--diario`, a partir de todos os arquivos `aaaammdd.html` da pasta. Por isso, rodar todo dia com `--diario`, sem `--desde`, soma o novo dia aos que já estão lá. Um dia rodado de novo é regravado, com os fundos da última rodada. Cada relatório diário guarda um resumo (JSON no `<head>`) que o índice lê, e assim o índice não depende de outro arquivo. Arquivos da pasta que não são relatórios ficam de fora.
+
+O navegador abre tudo direto do disco, sem servidor: o relatório do dia aparece dentro do índice num iframe, e os dois conversam por `postMessage`. Cada relatório diário tem cerca de 250 kB; uma série diária de 148 dias com dois fundos ocupa cerca de 35 MB.
 
 ### Versão em SQL
 
@@ -177,8 +219,11 @@ Todas as leituras usam `WITH (NOLOCK)` para não bloquear a base. A contrapartid
 | `FUNDOS_OPERACOES` | `codigo_IAM_fundo` = fundo, ativos dos tipos incluídos, `date_operacao` até a data + 5 dias | `codigo_IAM_ativo`, `date_operacao`, `exec_qt`, `exec_preco`, `exec_taxa` | taxa negociada |
 | `VW_FUNDOS_POSICAO` | `codigo_IAM_fundo` = fundo, `tipo = 'Fixed Income'`, 30 dias até a data (com `--desde`, de 30 dias antes do início da série até a data) | `codigo_IAM_ativo`, `isin`, `date`, `quantidade`, `total` | conferência de quantidade e PU; as datas da série; sem `--data`, a última data do fundo; com `--desde` sem data, a primeira |
 | `FUNDOS_DADOS_INDICES` | `codigo_IAM_indice = 'CDIAcumulado'` com `pnl_perc` > 0, a série inteira; vale o último dia até cada data | `date`, `pnl_perc` | CDI da conversão (só sem `--cdi`; uma consulta por execução) |
+| `FUNDOS_CADASTRO_ATIVOS` | `codigo_IAM_ativo` nos ativos da VCRA no escopo e da posição, `date_change` até a data | `codigo_IAM_ativo`, `campo`, `date_change`, `valor_str`, `valor_num`, `valor_date`, `fonte` | só a ficha do ativo no HTML (emissor, rating, vencimento, descrição...); não entra no cálculo |
 
-As três primeiras se ligam pelo código do ativo: `VCRAOPRF.CD_CETIP_SELIC` = `FUNDOS_OPERACOES.codigo_IAM_ativo` = `VW_FUNDOS_POSICAO.codigo_IAM_ativo`.
+As três primeiras se ligam pelo código do ativo: `VCRAOPRF.CD_CETIP_SELIC` = `FUNDOS_OPERACOES.codigo_IAM_ativo` = `VW_FUNDOS_POSICAO.codigo_IAM_ativo`; o cadastro também usa o `codigo_IAM_ativo`.
+
+O `FUNDOS_CADASTRO_ATIVOS` guarda uma linha por ativo, campo e data de alteração (`date_change`), com o valor numa das três colunas, conforme o tipo. `01/01/1900` é a carga inicial. A tabela regrava o mesmo valor a cada carga (o vencimento, por exemplo, aparece várias vezes igual). Por isso o script guarda só as versões, ou seja, as linhas em que o valor muda (`versoes_cadastro`). Vale a versão mais recente até a data do relatório: no 26F3253367, o emissor é a True Securitizadora até 28/06/2026 e a Opea Capital a partir de 29/06.
 
 ### Particularidades conhecidas
 
@@ -443,7 +488,7 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 
 | Função | O que faz | Devolve |
 |---|---|---|
-| `main(argv)` | lê os argumentos e o Excel, roda os fundos um a um (com `--desde`, cada data da série), imprime e grava o Excel e o HTML; com `--html`, só regera o HTML | — |
+| `main(argv)` | lê os argumentos e o Excel, roda os fundos um a um (com `--desde`, cada data da série), imprime e grava o Excel e o HTML; com `--html`, só regera o HTML; com `--diario`, guarda o resultado de cada data e grava os relatórios diários e o índice | — |
 | `carregar_entrada(caminho)` | lê as abas Fundos, Tipos e Correções | fundos, tipos, correções |
 | `_aba(abas, nome, colunas, caminho)` | pega uma aba e confere as colunas | DataFrame ou `None` |
 | `_chave`, `_sim`, `_texto`, `_numero` | nome sem acento; S/N; texto limpo; número com vírgula ou ponto | — |
@@ -475,6 +520,9 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 | `_situacao(r)` | linha do console de uma data da série ou de um fundo no resumo | etiqueta e texto |
 | `salvar_xlsx(caminho, tabelas, notas)` | grava o Excel com as colunas e formatos de `COLUNAS` | — |
 | `ler_saida(caminho)` | relê um `.xlsx` gravado, com os nomes internos das colunas, para o `--html` | tabelas, notas |
+| `versoes_cadastro(cad)` | cadastro do `FUNDOS_CADASTRO_ATIVOS` em versões: só as linhas em que o valor do campo muda, com o valor no tipo do campo | DataFrame (codigo, campo, desde, valor, fonte) |
+| `_juntar(partes)` | junta as tabelas de cada fundo numa só por aba | {aba: DataFrame} |
+| `gravar_diario(pasta, diario, trades_fundo, parametros, notas, html_report)` | `--diario`: um relatório por data em `diario/aaaammdd.html`, com os fundos que têm a data e os trades desde a data anterior da série | número de arquivos |
 | `_br(x, casas)` | número no formato brasileiro (1.234,56) | texto |
 | `_cdi_mais(x)` | taxa no formato CDI+x / CDI−x | texto |
 
@@ -482,7 +530,11 @@ O `html_report.py` não importa nada do `__main__` nem do attribution: recebe as
 
 | Função (`html_report.py`) | O que faz |
 |---|---|
-| `gerar_html(caminho, tabelas, notas)` | monta a página: cabeçalho, abas, um bloco por fundo em cada aba, a ficha dos ativos (JSON) e o CSS/JS embutidos |
+| `gerar_html(caminho, tabelas, notas, dia, trades_desde)` | monta a página: cabeçalho, abas, um bloco por fundo em cada aba, a ficha dos ativos (JSON) e o CSS/JS embutidos. Com `dia`, é o relatório de um dia: título com a data, botão CALENDÁRIO e o resumo do dia no `<head>` |
+| `gerar_indice(pasta_saida, subpasta)` | lê os relatórios de `diario/` e grava o `index.html`: calendário, relatório do dia num iframe e as abas HISTÓRICO e TRADES de todos os dias |
+| `_resumo_dia(dia, t)`, `_ler_resumos(pasta)` | grava e lê o resumo de cada relatório diário (linha de cada fundo e trades por dia, em JSON) | — |
+| `_dados_calendario(...)`, `_js_indice()` | dados do calendário (taxa, trades e quadro de cada fundo e dia) e o JavaScript do índice | — |
+| `_grafico_trades(f, clique, arquivo_do_dia)`, `_aba_trades_periodo(f)` | gráfico da taxa média de cada dia com trade; a aba TRADES do índice, só com os trades por dia | — |
 | `_preparar_fundo(t, info)` | separa as tabelas de um fundo e acrescenta peso, contribuição, avisos por ativo, emissão na convenção do grupo e "sem taxa" na fonte vazia |
 | `_aba_resumo`, `_aba_historico`, `_aba_ativos`, `_aba_lotes`, `_aba_trades`, `_aba_avisos` | o conteúdo de cada aba de um fundo |
 | `_aba_fundos`, `_aba_metodologia` | as abas gerais (FUNDOS só com mais de um fundo) |
@@ -490,6 +542,7 @@ O `html_report.py` não importa nada do `__main__` nem do attribution: recebe as
 | `_barras_h`, `_cascata`, `_dispersao`, `_barra_composicao`, `_sparkline` | barras por ativo ou fundo, cascata de contribuição, boleta × VCRA, composição por grupo e a mini série do cartão |
 | `_tabela(df, colunas, ...)`, `_filtros(tid, ...)` | tabela ordenável (cada célula leva o valor cru para a ordenação) e a barra de busca e seletores |
 | `_fichas(f)` | cabeçalho e cartões da ficha de cada ativo; as tabelas da ficha são copiadas das abas no navegador |
+| `_cadastro_vigente(cad, data_ref)`, `_ficha_cadastro(...)`, `_valor_cadastro(...)` | o cadastro na data (versão mais recente de cada campo e os campos que mudaram) e a parte da ficha com ele: seções, alterações e todos os campos, com datas, Sim/Não, CNPJ e taxa de emissão formatados |
 
 Os dois diagramas abaixo estão em Mermaid. O GitHub e o GitLab mostram o desenho direto; no VS Code, o preview de Markdown precisa da extensão Markdown Preview Mermaid Support.
 
@@ -544,7 +597,7 @@ flowchart TD
     tbIdx[("FUNDOS_DADOS_INDICES<br/>CDIAcumulado ou --cdi")] --> eqPct
     eqCdi --> cart["Médias ponderadas pelo financeiro<br/>CDI+ em spread · %CDI em % do CDI<br/>Carteira em CDI+ equivalente"]
     eqPct --> cart
-    cart --> saida[("Excel e relatório HTML<br/>com todos os fundos<br/>+ console<br/>trades por dia e por trade<br/>com --desde, uma linha por<br/>data na aba Histórico")]
+    cart --> saida[("Excel e relatório HTML<br/>com todos os fundos<br/>+ console<br/>trades por dia e por trade<br/>com --desde, uma linha por<br/>data na aba Histórico<br/>com --diario, um relatório<br/>por dia e o index.html")]
     mediaDia --> saida
 ```
 
@@ -555,7 +608,7 @@ O mesmo diagrama está em `doc/fluxograma.mmd`, para abrir em editores de Mermai
 ```mermaid
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html · --diario"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
@@ -577,6 +630,7 @@ flowchart LR
         sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>até a data + JANELA_BOLETA"]
         sqlPos["SQL_POSICAO<br/>Fixed Income · do início − DIAS_PU até a data"]
         sqlCdi["SQL_CDI<br/>CDIAcumulado · pnl_perc"]
+        sqlCad["SQL_CADASTRO<br/>ativos da VCRA e da posição<br/>date_change até a data"]
         fnConsulta["_consulta(query, sql, nome, obrigatoria)<br/>resultado vazio = erro, menos nas boletas"]
     end
 
@@ -597,6 +651,7 @@ flowchart LR
         tbVcra[("VCRAOPRF")]
         tbFo[("FUNDOS_OPERACOES")]
         tbIdx[("FUNDOS_DADOS_INDICES")]
+        tbCad[("FUNDOS_CADASTRO_ATIVOS")]
     end
 
     subgraph CALC["Cálculo de uma data"]
@@ -627,14 +682,18 @@ flowchart LR
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
         fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
         fnLerSaida["ler_saida(caminho)<br/>→ tabelas · notas<br/>relê um .xlsx gravado"]
+        fnDiario["gravar_diario(pasta,<br/>diario, trades_fundo, ...)<br/>um relatório por data<br/>trades desde a data<br/>anterior da série"]
     end
 
     subgraph HTML["html_report.py"]
-        fnHtml["gerar_html(caminho,<br/>tabelas, notas)<br/>abas · gráficos SVG<br/>tabelas com filtro<br/>ficha de cada ativo"]
+        fnHtml["gerar_html(caminho,<br/>tabelas, notas, dia)<br/>abas · gráficos SVG<br/>tabelas com filtro<br/>ficha de cada ativo<br/>com dia: resumo no head"]
+        fnIndice["gerar_indice(pasta_saida)<br/>lê o resumo de cada dia<br/>calendário · HISTÓRICO<br/>TRADES"]
     end
 
     arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes<br/>Trades por dia · Trades<br/>Avisos · Fundos · Parâmetros")]
     arqHtml[("Saída: o mesmo nome<br/>em .html<br/>FUNDOS · RESUMO<br/>HISTÓRICO · ATIVOS<br/>LOTES · TRADES<br/>AVISOS · METODOLOGIA")]
+    arqDiario[("Saída: output/diario/<br/>aaaammdd.html<br/>um relatório por dia<br/>com o resumo do dia")]
+    arqIndex[("Saída: output/index.html<br/>CALENDÁRIO · HISTÓRICO<br/>TRADES<br/>o dia num iframe")]
     console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · trades<br/>resumo por fundo"])
 
     cli --> fnMain
@@ -652,7 +711,8 @@ flowchart LR
     fnFundo --> fnLista
     fnLista -->|"códigos"| sqlBol
     fnCdi --> sqlCdi
-    sqlDatas & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
+    sqlDatas & sqlVcra & sqlBol & sqlPos & sqlCdi & sqlCad --> fnConsulta
+    fnFundo --> sqlCad
     fnConsulta --> cnQuery
     fnMain -->|"no fim, sempre"| cnDisc
     sqlDatas -.-> tbPos
@@ -660,6 +720,7 @@ flowchart LR
     sqlVcra -.-> tbVcra
     sqlBol -.-> tbFo
     sqlCdi -.-> tbIdx
+    sqlCad -.-> tbCad
 
     fnMain -->|"dados do fundo"| fnDatas
     fnMain -->|"cada data"| fnFatiar
@@ -698,6 +759,12 @@ flowchart LR
     fnMain -->|"--html: sem o banco"| fnLerSaida
     arqXlsx -.-> fnLerSaida
     fnLerSaida --> fnHtml
+    fnMain -->|"--diario: o resultado<br/>de cada data"| fnDiario
+    fnDiario -->|"uma vez por data"| fnHtml
+    fnHtml --> arqDiario
+    fnMain -->|"--diario"| fnIndice
+    arqDiario -.-> fnIndice
+    fnIndice --> arqIndex
     fnMain --> fnImp
     fnMain --> fnSit
     fnMain --> fnImpTrades
@@ -755,3 +822,23 @@ O relatório HTML também foi testado em 27/10/2026, com o banco simulado e as t
 - a dispersão boleta × VCRA mostra em vermelho os 5 lotes de CDI+ com o aviso Boleta × VCRA: L3971, K965290, K404275, K614228 e K993357.
 
 O relatório ainda não foi gerado com dados do banco de verdade.
+
+Em 28/10/2026, o `--diario` foi testado do mesmo jeito: três fundos com série diária (um deles sem posição), depois uma rodada só da última data. O teste confirmou estes pontos:
+
+- a série gera 148 arquivos `aaaammdd.html`, de 20260401 a 20261023, e o `index.html` fica fora da pasta `diario`;
+- a carteira de cada fundo nos relatórios de 30/04, 31/08 e 23/10 é a mesma da aba Histórico do Excel;
+- cada trade aparece em um relatório só: a soma dos trades dos 148 relatórios é igual à aba Trades;
+- a rodada só da última data regrava o 23/10 e refaz o índice com os 148 dias. O fundo que saiu da rodada continua nos outros dias e some do 23/10;
+- arquivo da pasta que não é relatório (outro nome, outra codificação, data inválida) fica fora do índice;
+- no Edge, o índice abre no último dia. O clique num dia, as setas, os botões, o mês anterior e o seletor de mês funcionam, e a aba aberta continua de um dia para o outro. A troca de fundo vai junto para o relatório, e um dia sem o fundo escolhido não troca o fundo do índice. Os cliques nas abas HISTÓRICO e TRADES abrem o dia certo, e a ficha do ativo abre dentro do relatório, sem erro de JavaScript na página nem no iframe;
+- a série de 148 dias com dois fundos levou cerca de 1 minuto, metade disso para gravar os relatórios diários.
+
+O `--diario` ainda não rodou no banco de verdade.
+
+O cadastro (`FUNDOS_CADASTRO_ATIVOS`) foi testado no mesmo dia, com as linhas reais do 26F3253367 no banco simulado. O teste confirmou estes pontos:
+
+- as 44 linhas do ativo viram 37 versões: o vencimento, gravado 8 vezes com o mesmo valor, fica com uma só, e o emissor e o nome ficam com duas;
+- o cadastro vigente em 27/06 tem a True Securitizadora, e em 23/10 a Opea Capital;
+- a ficha mostra o CNPJ formatado (02.773.542/0001-22), a taxa de emissão CDI+4,50, o vencimento com o prazo que falta e as flags como Sim/Não;
+- o Excel ganha a aba Cadastro, e o `--html` relido dele continua idêntico ao HTML da execução;
+- nos relatórios diários, o cadastro é o da data: em 26/06 o emissor é a True Securitizadora, em 23/10 a Opea, e a descrição (cadastrada em 01/09) só aparece a partir de setembro.

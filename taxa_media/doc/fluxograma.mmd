@@ -2,7 +2,7 @@
 %% Seta cheia = chamada ou dado passado; seta tracejada = leitura de arquivo ou de tabela.
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html · --diario"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
@@ -24,6 +24,7 @@ flowchart LR
         sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>até a data + JANELA_BOLETA"]
         sqlPos["SQL_POSICAO<br/>Fixed Income · do início − DIAS_PU até a data"]
         sqlCdi["SQL_CDI<br/>CDIAcumulado · pnl_perc"]
+        sqlCad["SQL_CADASTRO<br/>ativos da VCRA e da posição<br/>date_change até a data"]
         fnConsulta["_consulta(query, sql, nome, obrigatoria)<br/>resultado vazio = erro, menos nas boletas"]
     end
 
@@ -44,6 +45,7 @@ flowchart LR
         tbVcra[("VCRAOPRF")]
         tbFo[("FUNDOS_OPERACOES")]
         tbIdx[("FUNDOS_DADOS_INDICES")]
+        tbCad[("FUNDOS_CADASTRO_ATIVOS")]
     end
 
     subgraph CALC["Cálculo de uma data"]
@@ -74,14 +76,18 @@ flowchart LR
         fnCdiMais["_cdi_mais(x)<br/>CDI+x · CDI−x"]
         fnXlsx["salvar_xlsx(caminho, tabelas, notas)<br/>colunas e formatos de COLUNAS<br/>Histórico só com --desde"]
         fnLerSaida["ler_saida(caminho)<br/>→ tabelas · notas<br/>relê um .xlsx gravado"]
+        fnDiario["gravar_diario(pasta,<br/>diario, trades_fundo, ...)<br/>um relatório por data<br/>trades desde a data<br/>anterior da série"]
     end
 
     subgraph HTML["html_report.py"]
-        fnHtml["gerar_html(caminho,<br/>tabelas, notas)<br/>abas · gráficos SVG<br/>tabelas com filtro<br/>ficha de cada ativo"]
+        fnHtml["gerar_html(caminho,<br/>tabelas, notas, dia)<br/>abas · gráficos SVG<br/>tabelas com filtro<br/>ficha de cada ativo<br/>com dia: resumo no head"]
+        fnIndice["gerar_indice(pasta_saida)<br/>lê o resumo de cada dia<br/>calendário · HISTÓRICO<br/>TRADES"]
     end
 
     arqXlsx[("Saída: output/<br/>taxa_media_AAAAMMDD.xlsx<br/>com --desde:<br/>taxa_media_historico_...<br/>Histórico · Carteira<br/>Ativos · Lotes<br/>Trades por dia · Trades<br/>Avisos · Fundos · Parâmetros")]
     arqHtml[("Saída: o mesmo nome<br/>em .html<br/>FUNDOS · RESUMO<br/>HISTÓRICO · ATIVOS<br/>LOTES · TRADES<br/>AVISOS · METODOLOGIA")]
+    arqDiario[("Saída: output/diario/<br/>aaaammdd.html<br/>um relatório por dia<br/>com o resumo do dia")]
+    arqIndex[("Saída: output/index.html<br/>CALENDÁRIO · HISTÓRICO<br/>TRADES<br/>o dia num iframe")]
     console(["Saída: console<br/>[INFO] · [OK]<br/>[AVISO] · [ERRO]<br/>uma linha por data<br/>da série · trades<br/>resumo por fundo"])
 
     cli --> fnMain
@@ -99,7 +105,8 @@ flowchart LR
     fnFundo --> fnLista
     fnLista -->|"códigos"| sqlBol
     fnCdi --> sqlCdi
-    sqlDatas & sqlVcra & sqlBol & sqlPos & sqlCdi --> fnConsulta
+    sqlDatas & sqlVcra & sqlBol & sqlPos & sqlCdi & sqlCad --> fnConsulta
+    fnFundo --> sqlCad
     fnConsulta --> cnQuery
     fnMain -->|"no fim, sempre"| cnDisc
     sqlDatas -.-> tbPos
@@ -107,6 +114,7 @@ flowchart LR
     sqlVcra -.-> tbVcra
     sqlBol -.-> tbFo
     sqlCdi -.-> tbIdx
+    sqlCad -.-> tbCad
 
     fnMain -->|"dados do fundo"| fnDatas
     fnMain -->|"cada data"| fnFatiar
@@ -145,6 +153,12 @@ flowchart LR
     fnMain -->|"--html: sem o banco"| fnLerSaida
     arqXlsx -.-> fnLerSaida
     fnLerSaida --> fnHtml
+    fnMain -->|"--diario: o resultado<br/>de cada data"| fnDiario
+    fnDiario -->|"uma vez por data"| fnHtml
+    fnHtml --> arqDiario
+    fnMain -->|"--diario"| fnIndice
+    arqDiario -.-> fnIndice
+    fnIndice --> arqIndex
     fnMain --> fnImp
     fnMain --> fnSit
     fnMain --> fnImpTrades

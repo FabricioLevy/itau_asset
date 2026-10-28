@@ -18,6 +18,8 @@
 #   FUNDOS_OPERACOES      boleta do front: exec_taxa = taxa negociada (CDI+: spread % a.a.; %CDI: % do CDI).
 #   VW_FUNDOS_POSICAO     quantidade na data (conferência) e PU da última data com preço (total/quantidade).
 #   FUNDOS_DADOS_INDICES  CDIAcumulado: CDI do dia, só para converter %CDI em CDI+ equivalente.
+#   FUNDOS_CADASTRO_ATIVOS  cadastro dos ativos (emissor, rating, vencimento, descrição...), uma linha por campo e
+#                         data de alteração; só para a ficha do ativo no HTML, com o valor vigente na data.
 #
 # Cálculo (por fundo):
 #   escopo    tipos com incluir = S e indexador CDI (IDDIR_CD começando com CDI). IPCA, pré e SELIC ficam fora,
@@ -46,10 +48,14 @@
 # Saída: output/taxa_media_<aaaammdd>.xlsx (com um fundo só, taxa_media_<fundo>_<aaaammdd>.xlsx; com --desde,
 #   taxa_media_historico_...) — abas Histórico (só com --desde: uma linha por fundo e data), Carteira, Ativos e
 #   Lotes (da última data), Trades por dia e Trades (todo o histórico até a data; com --desde, desde o início
-#   da série), Avisos (da última data), Fundos e Parâmetros, com a coluna Fundo. Erro num fundo não para os
-#   outros: o fundo sai na aba Fundos com o erro.
+#   da série), Avisos (da última data), Cadastro (as versões de cada campo dos ativos, até a data), Fundos e
+#   Parâmetros, com a coluna Fundo (menos o Cadastro, que é do ativo). Erro num fundo não para os outros: o fundo
+#   sai na aba Fundos com o erro.
 #   Ao lado, o mesmo nome em .html: relatório com as mesmas tabelas, gráficos e a ficha de cada ativo
 #   (html_report.py, no layout do attribution). --html regera o relatório de um .xlsx já gravado, sem o banco.
+#   Com --diario, também um relatório por data em output/diario/aaaammdd.html (carteira, ativos, lotes e avisos da
+#   data e os trades desde a data anterior) e o output/index.html: calendário com todos os dias da pasta, o
+#   relatório do dia escolhido e o histórico e os trades consolidados. Rodar todo dia com --diario acumula os dias.
 #
 # Requisitos: ODBC Driver 18 for SQL Server, pyodbc, sqlalchemy, pandas, openpyxl.
 #
@@ -65,6 +71,8 @@
 #   python __main__.py --fundo ITAIMOBCDIFII --desde --frequencia diaria   (todos os dias)
 #   python __main__.py --fundo ITAIMOBCDIFII --desde 01/06/2026            (a partir de uma data)
 #   python __main__.py --html output/taxa_media_historico_ITAIMOBCDIFII_20261023.xlsx   (só o relatório HTML)
+#   python __main__.py --fundo ITAIMOBCDIFII --desde --diario    (um relatório por dia desde o início + index.html)
+#   python __main__.py --diario                                   (a última data, somada aos dias já na pasta)
 
 # ─────────────────────────────────────────────
 
@@ -203,6 +211,12 @@ FROM   FUNDOS_DADOS_INDICES WITH (NOLOCK)
 WHERE  codigo_IAM_indice = 'CDIAcumulado' AND pnl_perc > 0
 """
 
+SQL_CADASTRO = """
+SELECT  codigo_IAM_ativo AS codigo, campo, date_change AS desde, valor_str, valor_num, valor_date, fonte
+FROM    FUNDOS_CADASTRO_ATIVOS WITH (NOLOCK)
+WHERE   codigo_IAM_ativo IN ({codigos}) AND date_change <= '{data}'
+"""
+
 
 def _consulta(query, sql, nome, obrigatoria=True):
     """SELECT pelo sql_connection.query, que devolve DataFrame vazio também quando a consulta dá erro
@@ -246,7 +260,14 @@ def carregar_fundo(query, fundo, data, tipos, desde=None):
           for nome, df in (("vcra", vcra), ("boletas", boletas), ("posicao", posicao))}
     if not (dt["posicao"] == pd.Timestamp(data)).any():
         raise RuntimeError(f"sem posição em {data:%d/%m/%Y} na VW_FUNDOS_POSICAO")
-    return {"vcra": vcra, "boletas": boletas, "posicao": posicao, "data": data, "desde": desde, "dt": dt}
+    # cadastro dos ativos da VCRA no escopo e da posição, para a ficha do ativo no HTML
+    todos = sorted(set(codigos) | set(posicao["codigo"].dropna().str.strip()))
+    cadastro = pd.DataFrame()
+    if todos:
+        cadastro = _consulta(query, SQL_CADASTRO.format(codigos=_lista_sql(todos), **p), "FUNDOS_CADASTRO_ATIVOS",
+                             obrigatoria=False)
+    return {"vcra": vcra, "boletas": boletas, "posicao": posicao, "data": data, "desde": desde, "dt": dt,
+            "cadastro": versoes_cadastro(cadastro)}
 
 
 def datas_da_serie(d, frequencia):
@@ -286,6 +307,26 @@ def cdi_na_data(cdis, data):
     if not 0.01 < cdi < 0.5:
         raise RuntimeError(f"CDI de {cdi:.2%} a.a. no CDIAcumulado fora do esperado: informe com --cdi")
     return cdi, f"CDIAcumulado da FUNDOS_DADOS_INDICES em {linha['data']:%d/%m/%Y}"
+
+
+def versoes_cadastro(cad):
+    """FUNDOS_CADASTRO_ATIVOS (uma linha por ativo, campo e data de alteração) -> as versões de cada campo: só as
+    linhas em que o valor muda (a tabela regrava o mesmo valor a cada carga, ex.: vencimento), com o valor no tipo do
+    campo (texto, número ou data). Colunas: codigo, campo, desde, valor, fonte."""
+    colunas = ["codigo", "campo", "desde", "valor", "fonte"]
+    if cad.empty:
+        return pd.DataFrame(columns=colunas)
+    cad = cad.copy()
+    for c in ("codigo", "campo", "valor_str", "fonte"):
+        cad[c] = cad[c].map(lambda v: (v.strip() or None) if isinstance(v, str) else None)
+    cad["desde"] = pd.to_datetime(cad["desde"]).dt.normalize()
+    datas = pd.to_datetime(cad["valor_date"]).map(lambda v: None if pd.isna(v) else v.date())
+    numeros = pd.to_numeric(cad["valor_num"], errors="coerce").astype(object)
+    cad["valor"] = cad["valor_str"].where(cad["valor_str"].notna(), numeros.where(numeros.notna(), datas))
+    cad = cad[cad["valor"].notna()].sort_values(["codigo", "campo", "desde"], kind="stable")
+    texto = cad["valor"].astype(str)
+    muda = texto != texto.groupby([cad["codigo"], cad["campo"]]).shift()
+    return cad.loc[muda, colunas].reset_index(drop=True)
 
 
 def _cdi(cdi_fixo, cdis, data):
@@ -642,6 +683,8 @@ COLUNAS = {
                ("taxa_cdi_mais", "Taxa em CDI+ equivalente", TAXA)],
     "Avisos": [FUNDO, ("aviso", "Aviso", None), ("ativo", "Ativo", None), ("lote", "Lote", None),
                ("detalhe", "Detalhe", None)],
+    "Cadastro": [("codigo", "Ativo", None), ("campo", "Campo", None), ("valor", "Valor", None),
+                 ("desde", "Desde", DATA), ("fonte", "Fonte", None)],
     "Fundos": [FUNDO, ("nome", "Nome", None), ("data", "Data", DATA), ("status", "Status", None),
                ("taxa_carteira", "Carteira em CDI+ equivalente", TAXA), ("financeiro", "Financeiro (R$)", VALOR),
                ("n_lotes", "Lotes em aberto", "0"), ("n_ativos", "Ativos", "0"), ("n_avisos", "Avisos", "0"),
@@ -675,6 +718,50 @@ def salvar_xlsx(caminho, tabelas, notas):
         ws.append([])
         for nota in notas:
             ws.append([nota])
+
+
+def _juntar(partes):
+    """{aba: [DataFrame de cada fundo]} -> {aba: DataFrame}, sem as partes vazias."""
+    return {aba: pd.concat([p for p in lista if len(p)], ignore_index=True) if any(len(p) for p in lista)
+            else pd.DataFrame() for aba, lista in partes.items()}
+
+
+def gravar_diario(pasta, diario, trades_fundo, cadastro, parametros, notas, html_report):
+    """Um relatório HTML por data em pasta/aaaammdd.html (o mesmo layout, com os fundos que têm a data): carteira,
+    ativos, lotes e avisos da data, os trades desde a data anterior da série do fundo e o cadastro vigente na data.
+    diario e trades_fundo: como o main monta com --diario. O index.html é o html_report.gerar_indice, que lê a pasta
+    inteira."""
+    os.makedirs(pasta, exist_ok=True)
+    for dia in sorted(diario):
+        partes = {aba: [] for aba in ("Carteira", "Ativos", "Lotes", "Trades por dia", "Trades", "Avisos")}
+        linhas, inicio = [], pd.Timestamp(dia)
+        for fundo, (linha, resultado) in diario[dia].items():
+            linhas.append(linha)
+            if resultado is None:  # erro na data: o fundo sai só com a linha da aba Fundos
+                continue
+            lotes, ativos, carteira, avisos = resultado
+            partes["Carteira"].append(carteira.assign(fundo=fundo, data=pd.Timestamp(dia)))
+            partes["Ativos"].append(ativos.assign(fundo=fundo))
+            partes["Lotes"].append(lotes.assign(fundo=fundo))
+            partes["Avisos"].append(pd.DataFrame(avisos, columns=["aviso", "ativo", "lote", "detalhe"]).assign(fundo=fundo))
+            if fundo in trades_fundo:
+                trades, datas = trades_fundo[fundo]
+                anterior = max((x for x in datas if x < dia), default=None)
+                desde = pd.Timestamp(anterior) + pd.Timedelta(days=1) if anterior else pd.Timestamp(dia)
+                janela = trades[trades["data"].between(desde, pd.Timestamp(dia))]
+                inicio = min(inicio, desde)
+                partes["Trades"].append(janela.assign(fundo=fundo))
+                partes["Trades por dia"].append(trades_por_dia(janela).assign(fundo=fundo))
+        tabelas = _juntar(partes)
+        tabelas["Fundos"] = pd.DataFrame(linhas)
+        tabelas["Cadastro"] = cadastro[cadastro["desde"] <= pd.Timestamp(dia)] if len(cadastro) else cadastro
+        periodo = f"em {dia:%d/%m/%Y}" if inicio == pd.Timestamp(dia) else f"de {inicio:%d/%m/%Y} a {dia:%d/%m/%Y}"
+        param = parametros.copy()
+        param.loc[param["parametro"] == "Data de referência", "valor"] = f"{dia:%d/%m/%Y} (relatório do dia)"
+        tabelas["Parâmetros"] = pd.concat([param, pd.DataFrame([("Trades deste relatório", periodo)],
+                                                               columns=param.columns)], ignore_index=True)
+        html_report.gerar_html(os.path.join(pasta, f"{dia:%Y%m%d}.html"), tabelas, notas, dia=dia, trades_desde=inicio)
+    return len(diario)
 
 
 def ler_saida(caminho):
@@ -777,6 +864,9 @@ def main(argv=None):
                                                "(padrão: CDIAcumulado da FUNDOS_DADOS_INDICES na data de cada fundo)")
     ap.add_argument("--html", metavar="XLSX", help="só regera o relatório HTML de uma saída .xlsx já gravada, sem "
                                                    "consultar o banco (grava o .html ao lado do .xlsx)")
+    ap.add_argument("--diario", action="store_true",
+                    help="grava também um relatório HTML por data em output/diario/aaaammdd.html e o output/index.html, "
+                         "com o calendário de todos os dias da pasta; com --desde, a série passa a ser diária")
     args = ap.parse_args(argv)
     sys.path.insert(0, AQUI)
     import html_report
@@ -796,7 +886,7 @@ def main(argv=None):
         ap.error("--frequencia só vale com --desde")
     if args.desde not in (None, "inicio") and args.data and args.desde > args.data:
         ap.error("--desde depois de --data")
-    args.frequencia = args.frequencia or "mensal"
+    args.frequencia = args.frequencia or ("diaria" if args.diario else "mensal")
     serie = "" if not args.desde else f"{args.frequencia}, desde " + (
         "o início do fundo" if args.desde == "inicio" else f"{args.desde:%d/%m/%Y}")
 
@@ -825,6 +915,10 @@ def main(argv=None):
 
     partes = {aba: [] for aba in ("Carteira", "Ativos", "Lotes", "Trades por dia", "Trades", "Avisos")}
     resumo, historico, cdis = [], [], None
+    # com --diario: {data: {fundo: (linha da aba Fundos, (lotes, ativos, carteira, avisos) ou None se deu erro)}} e
+    # {fundo: (trades, datas da série)}, para o relatório de cada data
+    diario, trades_fundo = {}, {}
+    cadastros = []  # versões do cadastro de cada fundo (FUNDOS_CADASTRO_ATIVOS), até a data do fundo
 
     def cdi_do_dia(dia):  # para os trades: sem CDI até o dia, o CDI+ equivalente dos %CDI fica vazio
         try:
@@ -842,22 +936,28 @@ def main(argv=None):
                 d = carregar_fundo(query, fundo, args.data, tipos, args.desde)
                 if args.cdi is None and cdis is None:
                     cdis = carregar_cdi(query)
+                if d["cadastro"].empty:
+                    print("[AVISO] nenhum ativo na FUNDOS_CADASTRO_ATIVOS: a ficha do ativo sai sem o cadastro")
                 dias = datas_da_serie(d, args.frequencia)
                 if args.desde:
                     print(f"[INFO] série {args.frequencia}: {len(dias)} datas, de {dias[0]:%d/%m/%Y} a "
                           f"{dias[-1]:%d/%m/%Y}")
                 for dia in dias[:-1]:  # a última é a data de referência, calculada abaixo com o detalhe
+                    resultado, origem_dia = None, ""
                     try:
                         vcra, boletas, posicao = fatiar(d, dia)
                         # lote que ainda não existia na data não conta como correção não aplicada
                         lancados = set(vcra["CD"].str.strip())
-                        cdi = _cdi(args.cdi, cdis, dia)[0]
-                        r = resumo_da_data(dia, cdi, *calcular(
-                            vcra, boletas, posicao, dia, cdi, args.fonte,
-                            {cd: c for cd, c in corr.items() if cd in lancados}, tipos))
+                        cdi, origem_dia = _cdi(args.cdi, cdis, dia)
+                        resultado = calcular(vcra, boletas, posicao, dia, cdi, args.fonte,
+                                             {cd: c for cd, c in corr.items() if cd in lancados}, tipos)
+                        r = resumo_da_data(dia, cdi, *resultado)
                     except Exception as e:  # noqa — erro numa data da série não para as outras
                         r = {"data": dia, "status": f"erro: {e}"}
                     historico.append({"fundo": fundo, **r})
+                    if args.diario:
+                        diario.setdefault(dia, {})[fundo] = ({"fundo": fundo, "nome": nome, **r,
+                                                              "cdi_origem": origem_dia}, resultado)
                     etiqueta, texto = _situacao(r)
                     print(f"[{etiqueta}] {dia:%d/%m/%Y}: {texto}")
                 cdi, origem = _cdi(args.cdi, cdis, d["data"])
@@ -880,23 +980,29 @@ def main(argv=None):
             info.update(resumo_da_data(d["data"], cdi, lotes, ativos, carteira, avisos), cdi_origem=origem)
             if args.desde:
                 historico.append(info)
+            if args.diario:
+                diario.setdefault(d["data"], {})[fundo] = (dict(info), (lotes, ativos, carteira, avisos))
+                trades_fundo[fundo] = (trades, dias)
             partes["Carteira"].append(carteira.assign(fundo=fundo, data=pd.Timestamp(d["data"])))
             partes["Ativos"].append(ativos.assign(fundo=fundo))
             partes["Lotes"].append(lotes.assign(fundo=fundo))
             partes["Trades por dia"].append(por_dia.assign(fundo=fundo))
             partes["Trades"].append(trades.assign(fundo=fundo))
             partes["Avisos"].append(pd.DataFrame(avisos, columns=["aviso", "ativo", "lote", "detalhe"]).assign(fundo=fundo))
+            cadastros.append(d["cadastro"])
     finally:
         disconnect()
 
-    tabelas = {aba: pd.concat([p for p in lista if len(p)], ignore_index=True) if any(len(p) for p in lista)
-               else pd.DataFrame() for aba, lista in partes.items()}
+    tabelas = _juntar(partes)
     if len(tabelas["Lotes"]):
         tabelas["Lotes"] = tabelas["Lotes"].sort_values(["fundo", "grupo", "codigo", "dt_compra"]).assign(
             boleta_ok=lambda x: x["boleta_ok"].map({True: "sim", False: "não"}))
     if len(tabelas["Trades"]):
         tabelas["Trades"] = tabelas["Trades"].assign(boleta_ok=lambda x: x["boleta_ok"].map({True: "sim", False: "não"}))
     tabelas["Fundos"] = pd.DataFrame(resumo)
+    tabelas["Cadastro"] = (pd.concat(cadastros, ignore_index=True).drop_duplicates(["codigo", "campo", "desde"])
+                           .sort_values(["codigo", "campo", "desde"]).reset_index(drop=True)
+                           if cadastros else versoes_cadastro(pd.DataFrame()))
     if args.desde:
         tabelas["Histórico"] = pd.DataFrame(historico)
     datas = [r["data"] for r in resumo if "data" in r]
@@ -941,6 +1047,14 @@ def main(argv=None):
     except PermissionError:
         sys.exit(f"[ERRO] não deu para gravar {xlsx}: o arquivo está aberto no Excel?")
     html = html_report.gerar_html(os.path.splitext(xlsx)[0] + ".html", tabelas, notas)
+    if args.diario:
+        pasta = os.path.join(SAIDA_DIR, "diario")
+        print(f"\n[INFO] gravando {len(diario)} relatório(s) diário(s) em {pasta}")
+        notas_dia = [n for n in notas if not n.startswith("Histórico:")] + [
+            f"Relatório do dia: carteira, ativos, lotes e avisos só com o que existia na data (VCRA e boletas até a "
+            f"data, PU dos {DIAS_PU} dias anteriores, CDI do dia); trades desde a data anterior da série."]
+        gravar_diario(pasta, diario, trades_fundo, tabelas["Cadastro"], tabelas["Parâmetros"], notas_dia, html_report)
+        indice = html_report.gerar_indice(SAIDA_DIR)
 
     print(f"\n── Resumo {'─' * 40}")
     for r in resumo:
@@ -949,6 +1063,9 @@ def main(argv=None):
         print(f"[{etiqueta}] {r['fundo']}{quando}: {texto}")
     print(f"[OK] {xlsx}")
     print(f"[OK] {html}")
+    if args.diario:
+        print(f"[OK] {len(diario)} relatório(s) diário(s) em {pasta}")
+        print(f"[OK] {indice}")
     if any(r["status"].startswith("erro") for r in resumo):
         sys.exit(1)
 

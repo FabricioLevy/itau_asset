@@ -323,7 +323,7 @@ def _faixa_robusta(vals, corte=0.03):
 
 
 # ── SVG: série no tempo (painéis com o mesmo eixo X e crosshair) ─────────────────
-def _grafico_serie(cid, datas, paineis, temporal=False, rodape=None, clique=None):
+def _grafico_serie(cid, datas, paineis, temporal=False, rodape=None, clique=None, dias_clique=None):
     """Séries no tempo em painéis empilhados com o mesmo eixo X: um painel por unidade, nunca dois eixos Y no mesmo
     painel. paineis: [{"titulo", "altura", "fmt" (valor -> texto do tooltip e do rótulo final), "sufixo" e "escala"
     (ticks), "zero" (inclui o zero no eixo), "robusto" (escala sem os extremos, que ficam recortados na borda),
@@ -331,8 +331,9 @@ def _grafico_serie(cid, datas, paineis, temporal=False, rodape=None, clique=None
     "principal", "liga" (a linha passa por cima dos vazios)}]}]; os vals têm o tamanho de datas, com None onde não
     há valor. Eixo X por posição (uma vaga por data) ou, com temporal, proporcional ao tempo. O tooltip lista todas
     as séries visíveis na data mais próxima do mouse (dados no data-serie do .serie-overlay); rodape[i] fecha o
-    tooltip; clique = id da tabela de trades que o clique numa data filtra (só nas datas com rodape). cid = id do
-    gráfico (prefixo dos recortes)."""
+    tooltip; clique = id da tabela de trades que o clique numa data filtra (só nas datas com rodape) ou "#dia:<aba>",
+    que no index.html abre o relatório do dia nessa aba; dias_clique = o dia aberto em cada data (padrão: a própria
+    data). cid = id do gráfico (prefixo dos recortes)."""
     datas = [pd.Timestamp(d) for d in datas]
     n = len(datas)
     if not n:
@@ -472,7 +473,7 @@ def _grafico_serie(cid, datas, paineis, temporal=False, rodape=None, clique=None
     dados = {"xs": [round(x, 1) for x in xs], "titulos": [_dt(d) for d in datas], "ys": ys_json, "linhas": linhas,
              "rodape": rodape, "clique": clique}
     if clique:
-        dados["dias"] = [_iso(d) if rodape and rodape[i] else None for i, d in enumerate(datas)]
+        dados["dias"] = dias_clique or [_iso(d) if rodape and rodape[i] else None for i, d in enumerate(datas)]
     els.append(f'<rect class="serie-overlay{" clicavel" if clique else ""}" x="{PL}" y="{topo_plot}" '
                f'width="{largura:.1f}" height="{base_plot - topo_plot:.1f}" fill="transparent" '
                f'data-serie="{_esc(json.dumps(dados, ensure_ascii=False))}"/>')
@@ -707,8 +708,89 @@ def _sparkline(vals, cor):
             f'<circle cx="{pts[-1][0]:.1f}" cy="{pts[-1][1]:.1f}" r="3" fill="{cor}"/></svg>')
 
 
+# ── Cadastro do ativo (FUNDOS_CADASTRO_ATIVOS) ────────────────────────────────
+# campos da ficha, por seção; os outros ficam só em "Todos os campos"
+_CADASTRO_SECOES = [
+    ("Emissão", [("issuer", "Emissor"), ("emissor", "Código do emissor"), ("issuer_cnpj", "CNPJ do emissor"),
+                 ("data_emissao", "Emissão"), ("vencimento", "Vencimento"), ("taxa_emissao", "Taxa de emissão"),
+                 ("indexador", "Indexador"), ("tipo_indexador", "Tipo de indexador")]),
+    ("Crédito e risco", [("rating_itau", "Rating Itaú"), ("grupo_economico_ce", "Grupo econômico"),
+                         ("setor_iam_ce", "Setor"), ("subsetor_iam_ce", "Subsetor"),
+                         ("gics_sector_name", "Setor GICS"), ("estruturado_ce", "Estruturado"),
+                         ("watchlist_ce", "Watchlist"), ("exotico", "Exótico"), ("divida", "Dívida"),
+                         ("fator_risco", "Fator de risco")]),
+    ("Identificação", [("ativo", "Ativo"), ("isin", "ISIN"), ("ticker_bolsa", "Ticker"), ("bolsa", "Bolsa"),
+                       ("secID_CRIMS", "secID CRIMS"), ("issuer_cd", "Issuer (CRIMS)"), ("tipo", "Tipo"),
+                       ("tipo_marcacao", "Marcação"), ("pais", "País"), ("moeda_exposicao", "Moeda")]),
+]
+_CADASTRO_SIM_NAO = {"estruturado_ce", "watchlist_ce", "exotico", "risco_cambial"}
+
+
+def _cadastro_vigente(cad, data_ref):
+    """Cadastro na data: ({ativo: {campo: (valor, desde, fonte)}} com a versão mais recente de cada campo até a
+    data, {ativo: {campo: [(desde, valor), ...]}} dos campos que mudaram de valor)."""
+    atual, versoes = {}, {}
+    if cad is None or cad.empty:
+        return atual, versoes
+    cad = cad[cad["desde"] <= data_ref] if data_ref is not None else cad
+    for (codigo, campo), g in cad.sort_values("desde", kind="stable").groupby(["codigo", "campo"], sort=False):
+        u = g.iloc[-1]
+        atual.setdefault(str(codigo), {})[campo] = (u["valor"], u["desde"], u.get("fonte"))
+        if len(g) > 1:
+            versoes.setdefault(str(codigo), {})[campo] = list(zip(g["desde"], g["valor"]))
+    return atual, versoes
+
+
+def _desde_texto(d):
+    """Data da versão do campo; 01/01/1900 é a carga inicial do cadastro."""
+    return "" if _vazio(d) else "carga inicial" if pd.Timestamp(d).year == 1900 else _dt(d)
+
+
+def _valor_cadastro(campo, v, campos, data_ref):
+    """Valor de um campo do cadastro como texto: datas dd/mm/aaaa (o vencimento com o prazo que falta), flags 0/1 como
+    Sim/Não, CNPJ formatado e a taxa de emissão na convenção do indexador do ativo."""
+    if _vazio(v):
+        return ""
+    if isinstance(v, (pd.Timestamp, datetime, date)):
+        texto = _dt(v)
+        if campo == "vencimento" and data_ref is not None:
+            anos = (pd.Timestamp(v) - data_ref).days / 365.25
+            texto += f" (faltam {_br(anos, 1)} anos)" if anos > 0 else " (vencido)"
+        return texto
+    if isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool):
+        if campo in _CADASTRO_SIM_NAO:
+            return "Sim" if v else "Não"
+        if campo == "taxa_emissao":
+            indexador = str(campos.get("indexador", ("",))[0] or "").upper().replace(" ", "")
+            if indexador.startswith("CDI+"):
+                return _cdi_mais(float(v))
+            return f"{_br(v)}% do CDI" if "%" in indexador or indexador in ("CDI", "DI") else _br(v)
+        return _br(v, 0) if float(v).is_integer() else f"{float(v):.6g}".replace(".", ",")
+    if campo == "issuer_cnpj":
+        digitos = re.sub(r"\D", "", str(v))
+        if 0 < len(digitos) <= 14:
+            d = digitos.zfill(14)
+            return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"
+    return str(v)
+
+
+def _ficha_cadastro(campos, versoes, data_ref):
+    """Cadastro de um ativo para a ficha: nome, descrição, as seções de _CADASTRO_SECOES, todos os campos (valor,
+    desde quando e fonte) e as alterações de valor."""
+    def valor(campo):
+        return _valor_cadastro(campo, campos[campo][0], campos, data_ref) if campo in campos else ""
+
+    secoes = [[titulo, [[rotulo, valor(c)] for c, rotulo in itens if valor(c)]] for titulo, itens in _CADASTRO_SECOES]
+    fonte = {c: "" if _vazio(campos[c][2]) else str(campos[c][2]) for c in campos}
+    return {"nome": valor("security_name"), "descricao": valor("flyer_descricao_ativo"),
+            "secoes": [s for s in secoes if s[1]],
+            "campos": [[c, valor(c), _desde_texto(campos[c][1]), fonte[c]] for c in sorted(campos, key=str.lower)],
+            "mudancas": [[c, [[_desde_texto(d), _valor_cadastro(c, v, campos, None)] for d, v in vs]]
+                         for c, vs in sorted(versoes.items())]}
+
+
 # ── Dados de cada fundo ───────────────────────────────────────────────────────
-_COLUNAS_DATA = ("data", "dt_compra", "data_boleta", "dt_pu")
+_COLUNAS_DATA = ("data", "dt_compra", "data_boleta", "dt_pu", "desde")
 
 
 def _com_datas(df):
@@ -731,9 +813,10 @@ def _emissao(df):
     return np.where(df["grupo"] == "CDI+", df["taxa_emissao"], df["perc_cdi"])
 
 
-def _preparar_fundo(t, info):
+def _preparar_fundo(t, info, cadastro=None):
     """Tabelas de um fundo, com as colunas que o relatório acrescenta: peso e contribuição de cada ativo para a taxa
-    da carteira, avisos por ativo, emissão na convenção do grupo e a fonte da taxa com "sem taxa" no lugar do vazio."""
+    da carteira, avisos por ativo, nome, grupo econômico e rating do cadastro (cadastro = o atual do
+    _cadastro_vigente), emissão na convenção do grupo e a fonte da taxa com "sem taxa" no lugar do vazio."""
     fundo = info["fundo"]
     f = {"fundo": fundo, "info": info, "slug": re.sub(r"\W", "_", str(fundo)),
          "nome": "" if _vazio(info.get("nome")) else str(info["nome"]),
@@ -752,6 +835,10 @@ def _preparar_fundo(t, info):
         a["peso"] = (a["financeiro"] / total * 100).where(ok) if total else np.nan
         a["contrib"] = a["peso"] / 100 * a["taxa_cdi_mais"]
         a["n_avisos"] = a["codigo"].map(avisos_por_ativo).fillna(0)
+        cad = [(cadastro or {}).get(str(c), {}) for c in a["codigo"]]
+        for coluna, campo in (("nome_ativo", "security_name"), ("grupo_eco", "grupo_economico_ce"),
+                              ("rating", "rating_itau")):
+            a[coluna] = [x.get(campo, (None,))[0] for x in cad]
         f["ativos"] = a.sort_values(["grupo", "codigo"], na_position="last").reset_index(drop=True)
     for chave in ("lotes", "trades"):
         df = f[chave]
@@ -847,21 +934,22 @@ def _aba_resumo(f):
 
     tr = f["trades"]
     if len(tr):
-        cartoes = []
+        cartoes, dias = [], tr["data"]
+        quando = f"de {_dt(dias.min())} a {_dt(dias.max())}" if dias.nunique() > 1 else f"em {_dt(dias.min())}"
+        ir = ' data-ir="trades" role="button" tabindex="0" title="Abrir a aba TRADES"'
         for op in ("Compra", "Venda"):
             n, fin_op, taxa_op = _media_trades(tr[tr["operacao"] == op])
             if n:
-                cartoes.append(_kpi(f"{op}s no período: taxa média", _cdi_mais(taxa_op) or "sem taxa",
-                                    f"{_plural(n, op.lower())} · {_rs(fin_op)}", COR_OPERACAO[op],
-                                    extra=' data-ir="trades" role="button" tabindex="0" title="Abrir a aba TRADES"'))
-        dias = tr["data"]
-        cartoes.append(_kpi("Dias com trade", _br(dias.nunique(), 0), f"de {_dt(dias.min())} a {_dt(dias.max())}",
-                            extra=' data-ir="trades" role="button" tabindex="0" title="Abrir a aba TRADES"'))
+                cartoes.append(_kpi(f"{op}s: taxa média", _cdi_mais(taxa_op) or "sem taxa",
+                                    f"{_plural(n, op.lower())} · {_rs(fin_op)} · {quando}", COR_OPERACAO[op], extra=ir))
+        if dias.nunique() > 1:
+            cartoes.append(_kpi("Dias com trade", _br(dias.nunique(), 0), quando, extra=ir))
         html += f'<h2 class="aba-title">Trades</h2><div class="kpis">{"".join(cartoes)}</div>'
     return html
 
 
-def _aba_historico(f):
+def _aba_historico(f, abre_dia=False):
+    """Gráfico e tabela da série; com abre_dia (index.html), clicar numa data abre o relatório do dia."""
     h = f["historico"]
     if h.empty:
         return '<p class="aviso">Sem série para este fundo.</p>'
@@ -888,6 +976,8 @@ def _aba_historico(f):
     paineis = [p for p in paineis if p["series"]]
     rodape = [f"{_plural(r.n_ativos, 'ativo')} · {_plural(r.n_lotes, 'lote')} · {_plural(r.n_avisos, 'aviso')} · CDI "
               f"{_br(r.cdi)}%" if r.status == "OK" else str(r.status) for r in h.itertuples()]
+    if abre_dia:
+        rodape = [r + " — clique para abrir o dia" for r in rodape]
 
     validos = h[h["status"] == "OK"]
     resumo = ""
@@ -901,13 +991,15 @@ def _aba_historico(f):
                   f"{_cdi_mais(mx['taxa_carteira'])} em {_dt(mx['data'])}. {_plural(len(h), 'data')}"
                   f"{f', {len(h) - len(validos)} sem taxa' if len(h) > len(validos) else ''}.")
     cid = f"serie-{f['slug']}-hist"
+    clique = "#dia:resumo" if abre_dia else None
     grafico = (_legenda(cid, paineis) + f'<div id="{cid}" class="serie-chart">'
-               f'{_grafico_serie(cid, datas, paineis, rodape=rodape)}</div>'
+               f'{_grafico_serie(cid, datas, paineis, rodape=rodape, clique=clique)}</div>'
                if paineis else '<p class="aviso">Nenhuma data com taxa na série.</p>')
     html = _secao("Histórico da taxa média", grafico,
                   resumo + " Cada data é recalculada só com o que existia nela (VCRA e boletas até a data, PU dos dias "
                   "anteriores, CDI do dia). Passe o mouse para ver os valores; as caixas da legenda mostram ou "
-                  "escondem as linhas.")
+                  "escondem as linhas." + (" Clique numa data, no gráfico ou na tabela, para abrir o relatório do "
+                                           "dia." if abre_dia else ""))
     colunas = [("data", "Data", "data", "Data da carteira"), ("status", "Status", "status", "OK ou o motivo da falha"),
                ("taxa_carteira", "Carteira", "eq", "Taxa da carteira em CDI+ equivalente"),
                ("financeiro", "Financeiro (R$)", "int", "Financeiro dos ativos na média"),
@@ -920,7 +1012,8 @@ def _aba_historico(f):
                ("n_avisos", "Avisos", "int", "Avisos na data"),
                ("avisos", "Avisos por tipo", "longo", "Quantos de cada tipo")]
     tid = f"tbl-{f['slug']}-historico"
-    tabela = _tabela(h.sort_values("data", ascending=False), colunas, tid, alta=True)
+    tabela = _tabela(h.sort_values("data", ascending=False), colunas, tid, alta=True,
+                     attrs=[("dia", "data")] if abre_dia else (), extra=' data-abre-dia="resumo"' if abre_dia else "")
     return (html + f'<h2 class="aba-title">Tabela: uma linha por data (mais recente primeiro)</h2>'
             f'{_filtros(tid, dica="Filtrar (data, status, aviso...)")}{tabela}')
 
@@ -940,10 +1033,11 @@ def _aba_ativos(f):
     linhas = []
     for r in na_media.itertuples():
         proprio = f" ({_br(r.taxa_media)}% do CDI)" if r.grupo == "%CDI" else ""
+        nome = "" if _vazio(r.nome_ativo) else f"\n{r.nome_ativo}"
         linhas.append({
             "rotulo": r.codigo, "valor": r.taxa_cdi_mais, "texto": _cdi_mais(r.taxa_cdi_mais) + proprio,
             "cor": COR_GRUPO.get(r.grupo, _BASE), "ativo": r.codigo, "extra": r.peso, "extra_texto": f"{_br(r.peso, 1)}%",
-            "tip": f"{r.codigo} · {r.grupo}\nTaxa média: {_taxa(r.grupo, r.taxa_media)}\nCDI+ equivalente: "
+            "tip": f"{r.codigo} · {r.grupo}{nome}\nTaxa média: {_taxa(r.grupo, r.taxa_media)}\nCDI+ equivalente: "
                    f"{_cdi_mais(r.taxa_cdi_mais)}\nFinanceiro: {_rs(r.financeiro)} · peso {_br(r.peso, 2)}%\n"
                    f"Contribuição: {_br(r.contrib, 4)} p.p.\nClique para abrir a ficha"})
     fora = [f"{r['codigo']} ({_fora_da_media(r)})" for r in a.to_dict("records") if _fora_da_media(r)]
@@ -963,6 +1057,8 @@ def _aba_ativos(f):
     colunas = [("codigo", "Ativo", "ativo", "Clique para abrir a ficha do ativo"),
                ("grupo", "Grupo", "grupo", "CDI+ (tem spread de emissão) ou %CDI"),
                ("tipo", "Tipo", "texto", "RFTP_CD da VCRAOPRF"),
+               ("grupo_eco", "Grupo econômico", "texto", "Grupo econômico de risco (FUNDOS_CADASTRO_ATIVOS)"),
+               ("rating", "Rating", "texto", "Rating Itaú (FUNDOS_CADASTRO_ATIVOS)"),
                ("emissao", "Emissão", "conv", "Taxa de emissão: spread (CDI+) ou % do CDI"),
                ("n_lotes", "Lotes", "int", "Lotes em aberto na VCRA"),
                ("n_sem_boleta", "Sem boleta válida", "int", "Lotes sem boleta válida"),
@@ -978,6 +1074,8 @@ def _aba_ativos(f):
                ("peso", "Peso", "pct", "Parte do financeiro da média (vazio: fora da média)"),
                ("contrib", "Contribuição (p.p.)", "t4", "Peso × CDI+ equivalente; a soma é a taxa da carteira"),
                ("n_avisos", "Avisos", "int", "Avisos do ativo (veja a ficha ou a aba AVISOS)")]
+    sem_cadastro = {c for c in ("grupo_eco", "rating") if a[c].map(_vazio).all()}
+    colunas = [c for c in colunas if c[0] not in sem_cadastro]
     ok = a["peso"].notna()
     total = [{"codigo": "Carteira", "n_lotes": a["n_lotes"].sum(), "financeiro": a.loc[ok, "financeiro"].sum(),
               "peso": a["peso"].sum(), "taxa_cdi_mais": taxa, "contrib": a["contrib"].sum(),
@@ -1054,32 +1152,25 @@ def _aba_lotes(f):
             f'{tabela}')
 
 
-def _aba_trades(f):
-    tr, dia = f["trades"], f["por_dia"]
-    if tr.empty:
+def _sem_trades(f):
+    """Aviso de nenhum trade: no relatório de um dia, com o período dos trades dele."""
+    janela = f.get("janela")
+    if not janela:
         return '<p class="aviso">Nenhum trade no período.</p>'
-    tid, tid_dia = f"tbl-{f['slug']}-trades", f"tbl-{f['slug']}-pordia"
-    cartoes = []
-    for op in ("Compra", "Venda"):
-        n, fin, taxa = _media_trades(tr[tr["operacao"] == op])
-        if n:
-            cartoes.append(_kpi(f"{op}s: taxa média", _cdi_mais(taxa) or "sem taxa",
-                                f"{_plural(n, op.lower())} · {_rs(fin)} · em CDI+ equivalente", COR_OPERACAO[op],
-                                extra=f' data-filtra="{tid}" data-campo="op" data-valor="{op}" role="button" '
-                                      f'tabindex="0" title="Filtrar a tabela de trades"'))
-    cartoes.append(_kpi("Dias com trade", _br(tr["data"].nunique(), 0),
-                        f"de {_dt(tr['data'].min())} a {_dt(tr['data'].max())}"))
-    sem = tr[tr["taxa"].isna()]
-    if len(sem):
-        cartoes.append(_kpi("Trades sem taxa", _br(len(sem), 0), f"{_rs(sem['financeiro'].sum())} fora das médias",
-                            ITAU_RED, extra=f' data-filtra="{tid}" data-campo="fonte" data-valor="sem taxa" '
-                                            f'role="button" tabindex="0" title="Filtrar a tabela de trades"'))
-    html = f'<div class="kpis">{"".join(cartoes)}</div>'
+    ini, fim = janela
+    quando = f"em {_dt(fim)}" if ini == fim else f"de {_dt(ini)} a {_dt(fim)}"
+    return f'<p class="aviso">Nenhum trade {quando}.</p>'
 
-    # gráfico no tempo: média do dia de compras e vendas e, com a série, a taxa da carteira como referência
-    h = f["historico"]
+
+def _grafico_trades(f, clique, arquivo_do_dia=None):
+    """Seção com a taxa média de cada dia com trade (compras e vendas e, com a série, a taxa da carteira como
+    referência) e o financeiro do dia; vazio com menos de duas datas. clique: como no _grafico_serie;
+    arquivo_do_dia = {dia do trade: dia do relatório que tem o trade} (index.html)."""
+    dia, h = f["por_dia"], f["historico"]
     h = h[h["status"] == "OK"] if len(h) else h
     datas = sorted(set(dia["data"]) | set(h["data"] if len(h) else []))
+    if len(datas) < 2:
+        return ""
     por = {(r.data, r.operacao): r for r in dia.itertuples()}
     cart = dict(zip(h["data"], h["taxa_carteira"])) if len(h) else {}
 
@@ -1104,26 +1195,55 @@ def _aba_trades(f):
         partes = [f"{op}s: {_plural(por[(d, op)].n_trades, 'trade')}, {_plural(por[(d, op)].n_ativos, 'ativo')}"
                   for op in ("Compra", "Venda") if (d, op) in por]
         rodape.append(" · ".join(partes) + " — clique para ver os trades do dia" if partes else None)
+    dias_clique = None
+    if arquivo_do_dia is not None:
+        dias_clique = [_iso(arquivo_do_dia[d]) if r and d in arquivo_do_dia else None for d, r in zip(datas, rodape)]
     cid = f"serie-{f['slug']}-trades"
-    svg = _grafico_serie(cid, datas, paineis, temporal=True, rodape=rodape, clique=tid)
+    svg = _grafico_serie(cid, datas, paineis, temporal=True, rodape=rodape, clique=clique, dias_clique=dias_clique)
     grafico = _legenda(cid, paineis) + f'<div id="{cid}" class="serie-chart">{svg}</div>'
-    html += _secao("Trades por dia", grafico,
-                   "Cada ponto é a taxa média dos trades do dia, ponderada pelo financeiro de cada trade (os %CDI "
-                   "convertidos com o CDI do dia)" + ("; a linha laranja é a taxa da carteira na data" if cart else "")
-                   + ". Clique num dia para ver os trades dele na tabela de baixo.")
+    destino = "abrir o relatório do dia" if str(clique).startswith("#dia") else "ver os trades dele na tabela de baixo"
+    return _secao("Trades por dia", grafico,
+                  "Cada ponto é a taxa média dos trades do dia, ponderada pelo financeiro de cada trade (os %CDI "
+                  "convertidos com o CDI do dia)" + ("; a linha laranja é a taxa da carteira na data" if cart else "")
+                  + f". Clique num dia para {destino}.")
 
-    colunas_dia = [("data", "Data", "data", "Clique na linha para ver os trades do dia"),
-                   ("operacao", "Operação", "op", "Compra ou venda"), ("n_trades", "Trades", "int", "Trades no dia"),
-                   ("n_ativos", "Ativos", "int", "Ativos negociados"),
-                   ("financeiro", "Financeiro (R$)", "int", "Soma de qtd × PU dos trades"),
-                   ("taxa_total", "Taxa média", "eq", "Média ponderada pelo financeiro, em CDI+ equivalente"),
-                   ("taxa_pct", "%CDI: taxa", "pct", "Média dos %CDI, em % do CDI"),
-                   ("fin_pct", "%CDI: financeiro (R$)", "int", "Financeiro dos %CDI com taxa"),
-                   ("taxa_mais", "CDI+: spread", "eq", "Spread médio dos CDI+"),
-                   ("fin_mais", "CDI+: financeiro (R$)", "int", "Financeiro dos CDI+ com taxa"),
-                   ("n_sem_taxa", "Sem taxa", "int", "Trades sem taxa (fora das médias)"),
-                   ("fin_sem_taxa", "Sem taxa (R$)", "int", "Financeiro dos trades sem taxa"),
-                   ("cdi", "CDI (% a.a.)", "t2", "CDI do dia, para o CDI+ equivalente")]
+
+_COLUNAS_POR_DIA = [("data", "Data", "data", "Clique na linha para ver os trades do dia"),
+                    ("operacao", "Operação", "op", "Compra ou venda"), ("n_trades", "Trades", "int", "Trades no dia"),
+                    ("n_ativos", "Ativos", "int", "Ativos negociados"),
+                    ("financeiro", "Financeiro (R$)", "int", "Soma de qtd × PU dos trades"),
+                    ("taxa_total", "Taxa média", "eq", "Média ponderada pelo financeiro, em CDI+ equivalente"),
+                    ("taxa_pct", "%CDI: taxa", "pct", "Média dos %CDI, em % do CDI"),
+                    ("fin_pct", "%CDI: financeiro (R$)", "int", "Financeiro dos %CDI com taxa"),
+                    ("taxa_mais", "CDI+: spread", "eq", "Spread médio dos CDI+"),
+                    ("fin_mais", "CDI+: financeiro (R$)", "int", "Financeiro dos CDI+ com taxa"),
+                    ("n_sem_taxa", "Sem taxa", "int", "Trades sem taxa (fora das médias)"),
+                    ("fin_sem_taxa", "Sem taxa (R$)", "int", "Financeiro dos trades sem taxa"),
+                    ("cdi", "CDI (% a.a.)", "t2", "CDI do dia, para o CDI+ equivalente")]
+
+
+def _aba_trades(f):
+    tr, dia = f["trades"], f["por_dia"]
+    if tr.empty:
+        return _sem_trades(f)
+    tid, tid_dia = f"tbl-{f['slug']}-trades", f"tbl-{f['slug']}-pordia"
+    cartoes = []
+    for op in ("Compra", "Venda"):
+        n, fin, taxa = _media_trades(tr[tr["operacao"] == op])
+        if n:
+            cartoes.append(_kpi(f"{op}s: taxa média", _cdi_mais(taxa) or "sem taxa",
+                                f"{_plural(n, op.lower())} · {_rs(fin)} · em CDI+ equivalente", COR_OPERACAO[op],
+                                extra=f' data-filtra="{tid}" data-campo="op" data-valor="{op}" role="button" '
+                                      f'tabindex="0" title="Filtrar a tabela de trades"'))
+    dias = tr["data"]
+    cartoes.append(_kpi("Dias com trade", _br(dias.nunique(), 0), f"de {_dt(dias.min())} a {_dt(dias.max())}")
+                   if dias.nunique() > 1 else _kpi("Dia dos trades", _dt(dias.min()), _plural(len(tr), "trade")))
+    sem = tr[tr["taxa"].isna()]
+    if len(sem):
+        cartoes.append(_kpi("Trades sem taxa", _br(len(sem), 0), f"{_rs(sem['financeiro'].sum())} fora das médias",
+                            ITAU_RED, extra=f' data-filtra="{tid}" data-campo="fonte" data-valor="sem taxa" '
+                                            f'role="button" tabindex="0" title="Filtrar a tabela de trades"'))
+    html = f'<div class="kpis">{"".join(cartoes)}</div>' + _grafico_trades(f, tid)
     colunas = [("data", "Data", "data", "Data do trade"), ("operacao", "Operação", "op", "Compra ou venda"),
                ("codigo", "Ativo", "ativo", "Clique para abrir a ficha do ativo"),
                ("CD", "Lote", "texto", "CD da VCRAOPRF"),
@@ -1140,7 +1260,7 @@ def _aba_trades(f):
     fontes = [x for x in ("boleta", "VCRA", "manual", "sem taxa") if x in set(tr["fonte_rot"])]
     grupos = [g for g in COR_GRUPO if g in set(tr["grupo"])]
     filtros_dia = _filtros(tid_dia, [("op", "Operação", ops)], dica="Filtrar (data...)")
-    tabela_dia = _tabela(dia, colunas_dia, tid_dia, attrs=[("dia", "data"), ("op", "operacao")],
+    tabela_dia = _tabela(dia, _COLUNAS_POR_DIA, tid_dia, attrs=[("dia", "data"), ("op", "operacao")],
                          extra=f' data-filtra="{tid}"')
     filtros = _filtros(tid, [("op", "Operação", ops), ("grupo", "Grupo", grupos), ("fonte", "Fonte", fontes)],
                        dia=True, dica="Filtrar (ativo, lote...)")
@@ -1148,6 +1268,44 @@ def _aba_trades(f):
                                                          ("grupo", "grupo"), ("fonte", "fonte_rot")])
     return (html + f'<h2 class="aba-title">Trades por dia</h2>{filtros_dia}{tabela_dia}'
             f'<h2 class="aba-title tbl-bloco" id="{tid}-titulo">Trades (mais recentes primeiro)</h2>{filtros}{tabela}')
+
+
+def _media_por_dia(g):
+    """(trades, financeiro, taxa média em CDI+ equivalente) de linhas da tabela Trades por dia: a média de cada dia
+    pesa o financeiro dos trades com taxa."""
+    peso = (g["financeiro"] - g["fin_sem_taxa"].fillna(0)).where(g["taxa_total"].notna(), 0.0)
+    taxa = (peso * g["taxa_total"].fillna(0)).sum() / peso.sum() if peso.sum() else np.nan
+    return _int(g["n_trades"].sum()), g["financeiro"].sum(), taxa
+
+
+def _aba_trades_periodo(f):
+    """TRADES do index.html: os trades por dia de todos os relatórios diários; o detalhe de cada trade fica no
+    relatório do dia, que abre no clique."""
+    dia = f["por_dia"]
+    if dia.empty:
+        return '<p class="aviso">Nenhum trade nos relatórios diários.</p>'
+    cartoes = []
+    for op in ("Compra", "Venda"):
+        g = dia[dia["operacao"] == op]
+        if g.empty:
+            continue
+        n, fin, taxa = _media_por_dia(g)
+        cartoes.append(_kpi(f"{op}s: taxa média", _cdi_mais(taxa) or "sem taxa",
+                            f"{_plural(n, op.lower())} · {_rs(fin)} · em CDI+ equivalente", COR_OPERACAO[op]))
+    datas = dia["data"]
+    cartoes.append(_kpi("Dias com trade", _br(datas.nunique(), 0), f"de {_dt(datas.min())} a {_dt(datas.max())}"))
+    n_sem = _int(dia["n_sem_taxa"].fillna(0).sum())
+    if n_sem:
+        cartoes.append(_kpi("Trades sem taxa", _br(n_sem, 0), f"{_rs(dia['fin_sem_taxa'].sum())} fora das médias",
+                            ITAU_RED))
+    html = (f'<div class="kpis">{"".join(cartoes)}</div>'
+            + _grafico_trades(f, "#dia:trades", dict(zip(dia["data"], dia["arquivo"]))))
+    tid = f"tbl-{f['slug']}-pordia"
+    ops = [o for o in ("Compra", "Venda") if o in set(dia["operacao"])]
+    tabela = _tabela(dia, _COLUNAS_POR_DIA, tid, alta=True, attrs=[("dia", "arquivo"), ("op", "operacao")],
+                     extra=' data-abre-dia="trades"')
+    return (html + '<h2 class="aba-title">Trades por dia (mais recentes primeiro)</h2>'
+            f'{_filtros(tid, [("op", "Operação", ops)], dica="Filtrar (data...)")}{tabela}')
 
 
 def _aba_avisos(f):
@@ -1428,6 +1586,20 @@ def _css():
     .ficha-fechar:hover {{ background: #e3e8f3; }}
     .ficha .kpis {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }}
     .ficha .kpi-val {{ font-size: 1.2rem; }}
+    .ficha-nome {{ font-size: 1rem; font-weight: 600; color: #3a4052; margin-top: 2px; }}
+    .ficha-desc {{ background: #fff; border-left: 4px solid {ITAU_ORANGE}; border-radius: 6px; padding: 10px 14px;
+                   font-size: .84rem; color: #3a4052; line-height: 1.55; margin: 0 0 16px; max-width: 980px; }}
+    .cad-grade {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }}
+    .cad-secao {{ background: #fff; border-radius: 10px; padding: 12px 16px; box-shadow: 0 2px 10px rgba(0,0,0,.07); }}
+    .cad-secao h4 {{ font-size: .72rem; font-weight: 700; color: {_TINTA_FRACA}; text-transform: uppercase;
+                     letter-spacing: .06em; margin-bottom: 8px; }}
+    .cad-secao dl {{ display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-size: .82rem; }}
+    .cad-secao dt {{ color: {_TINTA_FRACA}; }}
+    .cad-secao dd {{ color: {_TINTA}; font-weight: 600; text-align: right; overflow-wrap: anywhere; }}
+    .cad-mudancas {{ margin-top: 12px; font-size: .8rem; color: #3a4052; }}
+    .cad-mudancas ul {{ margin: 4px 0 0 18px; line-height: 1.6; }}
+    .cad-todos {{ margin-top: 12px; }}
+    .cad-todos summary {{ cursor: pointer; font-size: .82rem; font-weight: 700; color: {ITAU_DARK}; margin-bottom: 8px; }}
 
     .glossario dt {{ font-weight: 700; color: {ITAU_DARK}; font-size: .88rem; margin-top: 10px; }}
     .glossario dd {{ color: #3a4052; font-size: .85rem; line-height: 1.55; }}
@@ -1439,12 +1611,74 @@ def _css():
                font-size: .78rem; color: {ITAU_GRAY2}; font-style: italic; text-align: center; line-height: 1.6; }}
     .aviso {{ color: #888; font-style: italic; padding: 20px 0; }}
 
+    /* relatório do dia: link para o calendário; dentro do index.html (iframe), sem cabeçalho nem rodapé */
+    .nav-direita {{ margin-left: auto; display: flex; align-items: center; gap: 14px; }}
+    .nav-cal {{ color: {ITAU_DARK}; font-weight: 700; font-size: .8rem; text-decoration: none; letter-spacing: .04em;
+                border: 2px solid {ITAU_DARK}; border-radius: 20px; padding: 6px 16px; white-space: nowrap; }}
+    .nav-cal:hover {{ background: {ITAU_DARK}; color: #fff; }}
+    /* o fundo é escolhido no índice, que avisa o relatório */
+    body.embutido .hdr, body.embutido .footer, body.embutido .nav-direita {{ display: none; }}
+    body.embutido .perf-nav {{ padding: 10px 24px; }}
+    body.embutido .content {{ padding: 20px 24px 40px; }}
+    table[data-abre-dia] tbody tr {{ cursor: pointer; }}
+
+    /* index.html: calendário dos dias e o relatório do dia ao lado */
+    .cal-layout {{ display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px;
+                   height: calc(100vh - 96px); min-height: 560px; }}
+    .cal-lateral {{ display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding: 2px 4px 2px 2px; }}
+    .cal-box {{ background: #fff; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }}
+    .cal-topo {{ display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }}
+    .cal-topo select {{ flex: 1; text-align: center; font-weight: 700; color: {ITAU_DARK}; }}
+    .cal-nav {{ border: 1.5px solid {ITAU_GRAY}; background: #fff; border-radius: 8px; width: 34px; height: 34px;
+                font-size: 1.15rem; line-height: 1; cursor: pointer; color: {ITAU_DARK}; flex: none; }}
+    .cal-nav:hover:not(:disabled) {{ border-color: {ITAU_ORANGE}; color: {ITAU_ORANGE}; }}
+    .cal-nav:disabled {{ opacity: .35; cursor: default; }}
+    .cal-grade {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }}
+    .cal-sem {{ font-size: .66rem; font-weight: 700; color: {_TINTA_FRACA}; text-align: center;
+                text-transform: uppercase; letter-spacing: .04em; padding-bottom: 4px; }}
+    .cal-dia {{ position: relative; height: 46px; border: 1px solid #e3e7f0; background: #fff; border-radius: 7px;
+                display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+                font: inherit; color: {ITAU_DARK}; cursor: pointer; padding: 0; }}
+    .cal-dia:hover:not(:disabled) {{ border-color: {ITAU_ORANGE}; background: #fff4e8; }}
+    .cal-dia:disabled {{ background: transparent; border-color: transparent; color: #c3c8d6; cursor: default; }}
+    .cal-dia.sel {{ background: {ITAU_ORANGE}; border-color: {ITAU_ORANGE}; color: #fff; }}
+    .cal-num {{ font-size: .82rem; font-weight: 700; }}
+    .cal-tx {{ font-size: .64rem; color: {_TINTA_FRACA}; font-variant-numeric: tabular-nums; }}
+    .cal-dia.sel .cal-tx {{ color: #fff; }}
+    .cal-trade {{ position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%;
+                  background: {COR_OPERACAO["Compra"]}; }}
+    .cal-dia.sel .cal-trade {{ background: #fff; }}
+    .cal-legenda {{ font-size: .72rem; color: {_TINTA_FRACA}; margin-top: 12px; line-height: 1.55; }}
+    .cal-legenda i {{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px;
+                      background: {COR_OPERACAO["Compra"]}; vertical-align: middle; }}
+    .cal-titulo {{ font-size: .95rem; font-weight: 700; color: {ITAU_DARK}; }}
+    .cal-fundo {{ font-size: .76rem; color: {_TINTA_FRACA}; margin: 2px 0 10px; }}
+    .cal-resumo {{ display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: .8rem; }}
+    .cal-resumo dt {{ color: {_TINTA_FRACA}; }}
+    .cal-resumo dd {{ color: {_TINTA}; font-weight: 600; text-align: right; }}
+    .cal-acoes {{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }}
+    .cal-abrir {{ display: block; margin-top: 12px; font-size: .78rem; font-weight: 700; color: {ITAU_ORANGE};
+                  text-decoration: none; }}
+    .cal-abrir:hover {{ text-decoration: underline; }}
+    .cal-acoes button, .cal-acoes a {{ flex: 1; padding: 7px 10px; border: 2px solid {ITAU_ORANGE}; border-radius: 18px;
+                                       background: #fff; color: {ITAU_ORANGE}; font: inherit; font-size: .78rem;
+                                       font-weight: 700; cursor: pointer; text-align: center; text-decoration: none;
+                                       white-space: nowrap; }}
+    .cal-acoes button:hover:not(:disabled), .cal-acoes a:hover {{ background: {ITAU_ORANGE}; color: #fff; }}
+    .cal-acoes button:disabled {{ opacity: .35; cursor: default; }}
+    .cal-relatorio {{ background: #fff; border-radius: 10px; box-shadow: 0 2px 16px rgba(0,0,0,.10); overflow: hidden; }}
+    .cal-relatorio iframe {{ display: block; width: 100%; height: 100%; border: 0; }}
+
     @media (max-width: 760px) {{
       .hdr, .perf-nav, .content, .footer {{ padding-left: 16px; padding-right: 16px; }}
       .brand span {{ display: none; }}
       .grid2 {{ grid-template-columns: 1fr; }}
       .filtro-busca {{ min-width: 0; width: 100%; }}
       .nav-fundo {{ margin-left: 0; }}
+    }}
+    @media (max-width: 980px) {{
+      .cal-layout {{ grid-template-columns: 1fr; height: auto; }}
+      .cal-relatorio {{ height: 85vh; }}
     }}
     @media print {{
       .nav-wrapper, .toolbar, .ficha-fundo {{ display: none !important; }}
@@ -1555,21 +1789,57 @@ def _js():
       c.querySelectorAll('.serie-' + sid).forEach(function(el){ el.style.display = caixa.checked ? '' : 'none'; });
     }
 
-    // Abas e fundo: as abas são as mesmas para todos os fundos; cada aba tem um .fundo-bloco por fundo.
+    // Abas e fundo: as abas são as mesmas para todos os fundos; cada aba tem um .fundo-bloco por fundo. Cada troca
+    // dispara o evento 'taxa-media' (o index.html e o relatório dentro dele se avisam por ele).
     function mostrarAba(aba) {
+      if (!document.querySelector('.perf-tab-btn[data-aba="' + CSS.escape(aba) + '"]')) return;
       document.querySelectorAll('.perf-tab-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.aba === aba); });
       document.querySelectorAll('.perf-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.aba === aba); });
+      document.dispatchEvent(new CustomEvent('taxa-media', {detail: {aba: aba}}));
     }
     function mostrarFundo(fundo) {
       document.querySelectorAll('.fundo-bloco').forEach(function(b){ b.hidden = b.dataset.fundo !== fundo; });
       const sel = document.getElementById('fundo-sel');
       if (sel) sel.value = fundo;
+      document.dispatchEvent(new CustomEvent('taxa-media', {detail: {fundo: fundo}}));
+    }
+    function fundoAtual() {
+      const b = document.querySelector('.perf-pane .fundo-bloco:not([hidden])');
+      return b ? b.dataset.fundo : '';
+    }
+    function abaAtual() {
+      const b = document.querySelector('.perf-tab-btn.active');
+      return b ? b.dataset.aba : '';
+    }
+    function temFundo(fundo) {
+      return !!fundo && !!document.querySelector('.fundo-bloco[data-fundo="' + CSS.escape(fundo) + '"]');
     }
     document.querySelectorAll('.perf-tab-btn').forEach(function(btn){
       btn.addEventListener('click', function(){ mostrarAba(btn.dataset.aba); });
     });
     const seletor = document.getElementById('fundo-sel');
     if (seletor) seletor.addEventListener('change', function(){ mostrarFundo(seletor.value); });
+
+    // Relatório de um dia aberto no index.html (num iframe): sem o cabeçalho, e o fundo e a aba escolhidos aqui vão
+    // para o index, que abre o próximo dia no mesmo ponto. O endereço aceita #fundo=...&aba=...
+    const embutido = window.parent !== window;
+    if (embutido) document.body.classList.add('embutido');
+    function avisarIndice() {
+      if (embutido) window.parent.postMessage({taxaMedia: 'estado', fundo: fundoAtual(), aba: abaAtual()}, '*');
+    }
+    document.addEventListener('taxa-media', avisarIndice);
+    window.addEventListener('message', function(e){
+      const m = e.data;
+      if (m && m.taxaMedia === 'fundo' && m.fundo !== fundoAtual() && temFundo(m.fundo)) mostrarFundo(m.fundo);
+    });
+    function aplicarEndereco() {
+      const p = new URLSearchParams(location.hash.slice(1));
+      if (temFundo(p.get('fundo')) && p.get('fundo') !== fundoAtual()) mostrarFundo(p.get('fundo'));
+      if (p.get('aba')) mostrarAba(p.get('aba'));
+      avisarIndice();
+    }
+    window.addEventListener('hashchange', aplicarEndereco);
+    aplicarEndereco();
 
     // Ordenação: data-v da célula (número cru ou data ISO) ou o texto; vazios sempre no fim.
     function sortTable(th) {
@@ -1642,7 +1912,9 @@ def _js():
 
     // Ficha do ativo: cabeçalho e cartões do JSON fichas-dados; as tabelas são cópias das linhas do ativo nas
     // abas LOTES, TRADES e AVISOS do mesmo fundo.
-    const fichas = JSON.parse(document.getElementById('fichas-dados').textContent);
+    const elFichas = document.getElementById('fichas-dados');
+    const dadosFichas = elFichas ? JSON.parse(elFichas.textContent) : {};
+    const fichas = dadosFichas.fundos || {}, cadastro = dadosFichas.cadastro || {};
     function cartao(rotulo, valor, sub) {
       const k = document.createElement('div'); k.className = 'kpi';
       const r = document.createElement('div'); r.className = 'kpi-rot'; r.textContent = rotulo;
@@ -1651,20 +1923,85 @@ def _js():
       if (sub) { const s = document.createElement('div'); s.className = 'kpi-sub'; s.textContent = sub; k.appendChild(s); }
       return k;
     }
+    // Cadastro do ativo (FUNDOS_CADASTRO_ATIVOS, vigente na data): seções, alterações de valor e todos os campos.
+    function blocoCadastro(cad) {
+      const caixa = document.createElement('div'); caixa.className = 'cad';
+      const grade = document.createElement('div'); grade.className = 'cad-grade';
+      cad.secoes.forEach(function(s){
+        const sec = document.createElement('div'); sec.className = 'cad-secao';
+        const h = document.createElement('h4'); h.textContent = s[0];
+        const dl = document.createElement('dl');
+        s[1].forEach(function(l){
+          const dt = document.createElement('dt'); dt.textContent = l[0];
+          const dd = document.createElement('dd'); dd.textContent = l[1];
+          dl.append(dt, dd);
+        });
+        sec.append(h, dl);
+        grade.appendChild(sec);
+      });
+      caixa.appendChild(grade);
+      if (cad.mudancas.length) {
+        const m = document.createElement('div'); m.className = 'cad-mudancas';
+        const t = document.createElement('b'); t.textContent = 'Alterações no cadastro';
+        const ul = document.createElement('ul');
+        cad.mudancas.forEach(function(x){
+          const li = document.createElement('li');
+          li.textContent = x[0] + ': ' + x[1].map(function(v){ return v[1] + ' (' + v[0] + ')'; }).join(' → ');
+          ul.appendChild(li);
+        });
+        m.append(t, ul);
+        caixa.appendChild(m);
+      }
+      const det = document.createElement('details'); det.className = 'cad-todos';
+      const resumo = document.createElement('summary');
+      resumo.textContent = 'Todos os campos do cadastro (' + cad.campos.length + ')';
+      const wrap = document.createElement('div'); wrap.className = 'tbl-wrap';
+      const tab = document.createElement('table'); tab.className = 'exp-table';
+      const cab = document.createElement('tr');
+      ['Campo', 'Valor', 'Desde', 'Fonte'].forEach(function(c){
+        const th = document.createElement('th'); th.textContent = c; th.title = 'Clique para ordenar';
+        th.addEventListener('click', function(){ sortTable(th); });
+        cab.appendChild(th);
+      });
+      const thead = document.createElement('thead'); thead.appendChild(cab);
+      const tb = document.createElement('tbody');
+      cad.campos.forEach(function(l){
+        const tr = document.createElement('tr');
+        l.forEach(function(v, j){
+          const td = document.createElement('td'); td.textContent = v;
+          if (j === 1) td.className = 'txt';
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+      });
+      tab.append(thead, tb);
+      wrap.appendChild(tab);
+      det.append(resumo, wrap);
+      caixa.appendChild(det);
+      return caixa;
+    }
     function abrirAtivo(fundo, ativo) {
       const dados = fichas[fundo] || {ativos: {}, slug: '', data: ''};
       const info = dados.ativos[ativo];
       const m = document.getElementById('ficha'), corpo = m.querySelector('.ficha-corpo');
       m.dataset.fundo = fundo;
       corpo.replaceChildren();
+      const cad = cadastro[ativo];
       const h = document.createElement('h2'); h.id = 'ficha-titulo'; h.textContent = ativo;
+      corpo.appendChild(h);
+      if (cad && cad.nome) { const n = document.createElement('p'); n.className = 'ficha-nome'; n.textContent = cad.nome; corpo.appendChild(n); }
       const sub = document.createElement('p'); sub.className = 'ficha-sub';
       sub.textContent = info ? info.sub : 'Fora da carteira em ' + dados.data + ': só aparece nos trades.';
-      corpo.append(h, sub);
+      corpo.appendChild(sub);
+      if (cad && cad.descricao) { const d = document.createElement('p'); d.className = 'ficha-desc'; d.textContent = cad.descricao; corpo.appendChild(d); }
       if (info) {
         const k = document.createElement('div'); k.className = 'kpis';
         info.kpis.forEach(function(p){ k.appendChild(cartao(p[0], p[1], p[2])); });
         corpo.appendChild(k);
+      }
+      if (cad) {
+        const t = document.createElement('h3'); t.className = 'aba-title'; t.textContent = 'Cadastro';
+        corpo.append(t, blocoCadastro(cad));
       }
       [['Lotes em aberto', 'lotes'], ['Trades', 'trades'], ['Avisos', 'avisos']].forEach(function(s){
         const t = document.getElementById('tbl-' + dados.slug + '-' + s[1]);
@@ -1689,8 +2026,12 @@ def _js():
       m.querySelector('.ficha-fechar').focus();
     }
     function fecharFicha() {
-      document.getElementById('ficha').classList.remove('aberta');
+      const m = document.getElementById('ficha');
+      if (m) m.classList.remove('aberta');
       document.body.classList.remove('modal-aberto');
+    }
+    function abrirDiaEm(dia, aba) {
+      if (dia) document.dispatchEvent(new CustomEvent('abrir-dia', {detail: {dia: dia, aba: aba}}));
     }
 
     document.addEventListener('click', function(e){
@@ -1713,10 +2054,14 @@ def _js():
       if (chip) { filtrarDia(chip.dataset.alvo, ''); return; }
       const linha = t.closest('table[data-filtra] tbody tr');
       if (linha) { filtrarDia(linha.closest('table').dataset.filtra, linha.dataset.dia, linha.children[0].textContent); return; }
+      // no index.html: linha de tabela ou data de gráfico que abre o relatório do dia
+      const abre = t.closest('table[data-abre-dia] tbody tr');
+      if (abre) { abrirDiaEm(abre.dataset.dia, abre.closest('table').dataset.abreDia); return; }
       const ov = t.closest('.serie-overlay.clicavel');
       if (ov) {
         const d = dadosSerie(ov), i = indiceSerie(ov, e);
-        if (d.dias && d.dias[i]) filtrarDia(d.clique, d.dias[i], d.titulos[i]);
+        if (d.dias && d.dias[i] && String(d.clique).startsWith('#dia')) abrirDiaEm(d.dias[i], d.clique.split(':')[1]);
+        else if (d.dias && d.dias[i]) filtrarDia(d.clique, d.dias[i], d.titulos[i]);
         return;
       }
       if (t.closest('.ficha-fechar') || t.id === 'ficha') fecharFicha();
@@ -1737,6 +2082,42 @@ _ABAS_FUNDO = [("resumo", "RESUMO", _aba_resumo), ("historico", "HISTÓRICO", _a
                ("avisos", "AVISOS", _aba_avisos)]
 
 
+def _seletor_fundo(fundos):
+    """Seletor de fundo da barra de abas; fundos: [(fundo, nome)]."""
+    opcoes = "".join(f'<option value="{_esc(fundo)}">{_esc(fundo)}{" — " + _esc(nome) if nome else ""}</option>'
+                     for fundo, nome in fundos)
+    return f'<label class="nav-fundo">Fundo <select id="fundo-sel" class="mes-select">{opcoes}</select></label>'
+
+
+def _json_valor(v):
+    if _vazio(v):
+        return None
+    if isinstance(v, (pd.Timestamp, datetime, date)):
+        return _iso(v)
+    if isinstance(v, np.integer):
+        return int(v)
+    if isinstance(v, (np.floating, float)):
+        return float(v)
+    return v if isinstance(v, (int, str)) else str(v)
+
+
+# o que cada relatório diário guarda para o index.html: a linha de cada fundo (aba Fundos) e os trades por dia
+_RESUMO_FUNDO = ("fundo", "nome", "status", "taxa_carteira", "financeiro", "taxa_pct", "fin_pct", "taxa_mais",
+                 "fin_mais", "n_ativos", "n_lotes", "cdi", "n_avisos", "avisos")
+_RESUMO_TRADES = ("fundo",) + tuple(c for c, *_ in _COLUNAS_POR_DIA)
+
+
+def _resumo_dia(dia, t):
+    """<script> com o resumo do dia, que o gerar_indice lê sem abrir o resto do arquivo."""
+    def linhas(aba, campos):
+        df = t.get(aba, pd.DataFrame())
+        return [{c: _json_valor(r.get(c)) for c in campos} for r in df.to_dict("records")]
+    dados = {"dia": _iso(dia), "fundos": linhas("Fundos", _RESUMO_FUNDO),
+             "trades": linhas("Trades por dia", _RESUMO_TRADES)}
+    texto = json.dumps(dados, ensure_ascii=False).replace("</", "<\\/")
+    return f'<script type="application/json" id="resumo-dia">{texto}</script>'
+
+
 def _cabecalho_fundo(f):
     nome = f" ({_esc(f['nome'])})" if f["nome"] else ""
     partes = [f"Fundo: <strong>{_esc(f['fundo'])}</strong>{nome}"]
@@ -1747,14 +2128,22 @@ def _cabecalho_fundo(f):
     return " &nbsp;|&nbsp; ".join(partes)
 
 
-def gerar_html(caminho, tabelas, notas=()):
+def gerar_html(caminho, tabelas, notas=(), dia=None, trades_desde=None):
     """Grava o relatório HTML a partir das tabelas do Excel ({aba: DataFrame} com os nomes internos das colunas, as
-    mesmas do salvar_xlsx do __main__; a que faltar fica de fora) e devolve o caminho."""
+    mesmas do salvar_xlsx do __main__; a que faltar fica de fora) e devolve o caminho. Com dia, é o relatório de um
+    dia da pasta diario/: o título leva a data, a barra de abas ganha o link para o ../index.html e o <head> guarda
+    o resumo do dia que o gerar_indice lê; trades_desde = 1º dia dos trades do relatório (padrão: o próprio dia)."""
     t = {aba: _com_datas(df) for aba, df in tabelas.items() if isinstance(df, pd.DataFrame)}
     fundos_df = t.get("Fundos", pd.DataFrame(columns=["fundo", "status"]))
     param_df = t.get("Parâmetros", pd.DataFrame(columns=["parametro", "valor"]))
     param = dict(zip(param_df["parametro"], param_df["valor"])) if len(param_df) else {}
-    fundos = [_preparar_fundo(t, r) for r in fundos_df.to_dict("records")]
+    # cadastro vigente na data do relatório (a mais recente entre os fundos ou o dia do relatório diário)
+    datas = fundos_df["data"].dropna() if "data" in fundos_df.columns else pd.Series(dtype=object)
+    data_ref = pd.Timestamp(dia) if dia is not None else pd.Timestamp(datas.max()) if len(datas) else None
+    cad_atual, cad_versoes = _cadastro_vigente(t.get("Cadastro"), data_ref)
+    fundos = [_preparar_fundo(t, r, cad_atual) for r in fundos_df.to_dict("records")]
+    for f in fundos if dia is not None else []:
+        f["janela"] = (pd.Timestamp(trades_desde or dia), pd.Timestamp(dia))
     tem_historico = len(t.get("Histórico", ())) > 0
 
     abas = []
@@ -1773,10 +2162,11 @@ def gerar_html(caminho, tabelas, notas=()):
 
     nav = "".join(f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
                   for i, (aba, rotulo, _) in enumerate(abas))
-    if len(fundos) > 1:
-        opcoes = "".join(f'<option value="{_esc(f["fundo"])}">{_esc(f["fundo"])}'
-                         f'{" — " + _esc(f["nome"]) if f["nome"] else ""}</option>' for f in fundos)
-        nav += f'<label class="nav-fundo">Fundo <select id="fundo-sel" class="mes-select">{opcoes}</select></label>'
+    direita = [_seletor_fundo([(f["fundo"], f["nome"]) for f in fundos])] if len(fundos) > 1 else []
+    if dia is not None:
+        direita.append('<a class="nav-cal" href="../index.html" title="Calendário com todos os dias">CALENDÁRIO</a>')
+    if direita:
+        nav += f'<div class="nav-direita">{"".join(direita)}</div>'
     paineis = "".join(f'<div class="perf-pane{" active" if i == 0 else ""}" data-aba="{aba}">{html}</div>'
                       for i, (aba, _, html) in enumerate(abas))
 
@@ -1787,12 +2177,21 @@ def gerar_html(caminho, tabelas, notas=()):
         sub += f" &nbsp;|&nbsp; Série: <strong>{_esc(serie)}</strong>"
     if param.get("Taxa dos CDI+"):
         sub += f" &nbsp;|&nbsp; Taxa dos CDI+: <strong>{_esc(param['Taxa dos CDI+'])}</strong>"
-    titulo = fundos[0]["fundo"] if len(fundos) == 1 else f"{len(fundos)} fundos"
+    titulo = _dt(dia) if dia is not None else fundos[0]["fundo"] if len(fundos) == 1 else f"{len(fundos)} fundos"
+    resumo_dia = _resumo_dia(dia, t) if dia is not None else ""
     rodape = list(notas)[:1] + ["Método, parâmetros e notas na aba METODOLOGIA"] + (
         [f"Gerado em {param['Gerado em']}"] if param.get("Gerado em") else [])
     rodape = " &nbsp;|&nbsp; ".join(_esc(n) for n in rodape)
     # "</" escapado para o JSON não fechar o <script>
-    fichas = json.dumps({f["fundo"]: _fichas(f) for f in fundos if not f["erro"]}, ensure_ascii=False)
+    # cadastro só dos ativos que aparecem no relatório (ativos, lotes, trades e avisos de algum fundo)
+    codigos = set()
+    for f in fundos:
+        for chave, coluna in (("ativos", "codigo"), ("lotes", "codigo"), ("trades", "codigo"), ("avisos", "ativo")):
+            codigos |= {str(c) for c in f[chave][coluna].dropna()} if len(f[chave]) else set()
+    cadastro = {c: _ficha_cadastro(cad_atual[c], cad_versoes.get(c, {}), data_ref) for c in sorted(codigos)
+                if c in cad_atual}
+    fichas = json.dumps({"fundos": {f["fundo"]: _fichas(f) for f in fundos if not f["erro"]}, "cadastro": cadastro},
+                        ensure_ascii=False)
     fichas = fichas.replace("</", "<\\/")
 
     html = f"""<!DOCTYPE html>
@@ -1801,6 +2200,7 @@ def gerar_html(caminho, tabelas, notas=()):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Taxa média — {_esc(titulo)}</title>
+  {resumo_dia}
   <style>{_css()}</style>
 </head>
 <body>
@@ -1838,3 +2238,324 @@ def gerar_html(caminho, tabelas, notas=()):
     with open(caminho, "w", encoding="utf-8") as arq:
         arq.write(html)
     return caminho
+
+
+# ── index.html: calendário dos relatórios diários ─────────────────────────────
+_PADRAO_DIA = re.compile(r"\d{8}\.html")
+_PADRAO_RESUMO = re.compile(r'<script type="application/json" id="resumo-dia">(.*?)</script>', re.S)
+
+
+def _ler_resumos(pasta):
+    """{dia (Timestamp): resumo} de cada pasta/aaaammdd.html; arquivo sem o resumo (de outra versão ou que não é
+    relatório) ou com data inválida no nome fica de fora."""
+    resumos = {}
+    for nome in sorted(os.listdir(pasta)) if os.path.isdir(pasta) else []:
+        if not _PADRAO_DIA.fullmatch(nome):
+            continue
+        with open(os.path.join(pasta, nome), encoding="utf-8", errors="replace") as arq:
+            texto = arq.read(200_000)  # o resumo fica no <head>
+            m = _PADRAO_RESUMO.search(texto) or _PADRAO_RESUMO.search(texto + arq.read())
+        try:
+            resumos[pd.Timestamp(nome[:8])] = json.loads(m.group(1))
+        except (AttributeError, ValueError):
+            continue
+    return resumos
+
+
+def _dados_calendario(fundos, nomes, historico, por_dia, pasta):
+    """JSON do calendário: os dias com relatório e, por fundo e dia, a taxa da carteira (embaixo do número do dia),
+    se teve trade e as linhas do quadro do dia escolhido."""
+    fundos_cal = {}
+    for fundo in fundos:
+        trades = {}
+        g_fundo = por_dia[por_dia["fundo"] == fundo] if len(por_dia) else por_dia
+        for (arquivo, op), g in (g_fundo.groupby(["arquivo", "operacao"]) if len(g_fundo) else []):
+            n, fin, taxa = _media_por_dia(g)
+            texto = f"{_plural(n, op.lower())} · {_rs(fin)}" + (f" · {_cdi_mais(taxa)}" if not _vazio(taxa) else "")
+            trades.setdefault(_iso(arquivo), {})[op] = (n, texto)
+        dias = {}
+        for r in historico[historico["fundo"] == fundo].to_dict("records"):
+            iso, ok = _iso(r["data"]), r.get("status") == "OK"
+            ops = trades.get(iso, {})
+            resumo = [["Carteira", f"{_cdi_mais(r['taxa_carteira'])} (CDI+ eq.)" if ok else str(r.get("status"))]]
+            if ok:
+                resumo += [["%CDI", _taxa("%CDI", r.get("taxa_pct")) or "—"],
+                           ["CDI+", _cdi_mais(r.get("taxa_mais")) or "—"], ["Financeiro", _rs(r.get("financeiro"))],
+                           ["Ativos · lotes", f"{_br(_int(r.get('n_ativos')), 0)} · {_br(_int(r.get('n_lotes')), 0)}"],
+                           ["Avisos", _br(_int(r.get("n_avisos")), 0)],
+                           ["CDI", f"{_br(r['cdi'])}% a.a." if not _vazio(r.get("cdi")) else "—"]]
+            resumo += [[f"{op}s", ops[op][1]] for op in ("Compra", "Venda") if op in ops] or [["Trades", "nenhum"]]
+            dias[iso] = {"taxa": _br(r["taxa_carteira"]) if ok else "—",
+                         "carteira": _cdi_mais(r["taxa_carteira"]) if ok else str(r.get("status")),
+                         "trades": sum(n for n, _ in ops.values()), "resumo": resumo}
+        fundos_cal[fundo] = dias
+    return {"pasta": pasta, "dias": sorted({_iso(d) for d in historico["data"]}), "fundos": fundos_cal,
+            "nomes": nomes, "fundoInicial": fundos[0] if fundos else ""}
+
+
+def gerar_indice(pasta_saida, subpasta="diario"):
+    """Grava pasta_saida/index.html a partir dos relatórios em pasta_saida/subpasta/aaaammdd.html: o calendário dos
+    dias, o relatório do dia escolhido ao lado e o histórico e os trades de todos os dias. Dias de rodadas
+    diferentes entram todos (o índice é refeito do zero a cada rodada). Devolve o caminho, ou None sem relatório."""
+    resumos = _ler_resumos(os.path.join(pasta_saida, subpasta))
+    if not resumos:
+        return None
+    linhas_hist, linhas_trades, nomes = [], [], {}
+    for dia, r in resumos.items():
+        for linha in r.get("fundos", []):
+            linhas_hist.append({**linha, "data": dia})
+            if linha.get("nome"):
+                nomes[linha["fundo"]] = linha["nome"]
+        linhas_trades += [{**linha, "arquivo": dia} for linha in r.get("trades", [])]
+    historico = _com_datas(pd.DataFrame(linhas_hist)).sort_values("data").reset_index(drop=True)
+    por_dia = _com_datas(pd.DataFrame(linhas_trades))
+    for df, textos in ((historico, _RESUMO_FUNDO[:3] + ("avisos",)), (por_dia, ("fundo", "operacao"))):
+        for c in df.columns.difference(textos + ("data", "arquivo")):  # o JSON traz vazio como None
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    if len(por_dia):
+        # o mesmo dia de trade em dois relatórios (rodadas com períodos diferentes): vale o relatório mais próximo
+        por_dia = (por_dia.sort_values("arquivo").drop_duplicates(["fundo", "data", "operacao"])
+                   .sort_values(["data", "operacao"], ascending=[False, True]).reset_index(drop=True))
+    fundos = list(dict.fromkeys(historico["fundo"]))
+
+    blocos_hist, blocos_trades = [], []
+    for i, fundo in enumerate(fundos):
+        f = {"fundo": fundo, "slug": re.sub(r"\W", "_", str(fundo)),
+             "historico": historico[historico["fundo"] == fundo].reset_index(drop=True),
+             "por_dia": por_dia[por_dia["fundo"] == fundo] if len(por_dia) else pd.DataFrame()}
+        abre = f'<div class="fundo-bloco" data-fundo="{_esc(fundo)}"{" hidden" if i else ""}>'
+        blocos_hist.append(f"{abre}{_aba_historico(f, abre_dia=True)}</div>")
+        blocos_trades.append(f"{abre}{_aba_trades_periodo(f)}</div>")
+
+    calendario = """
+<div class="cal-layout">
+  <aside class="cal-lateral">
+    <div class="cal-box">
+      <div class="cal-topo">
+        <button type="button" class="cal-nav" id="cal-ant" title="Mês anterior" aria-label="Mês anterior">‹</button>
+        <select id="cal-mes" class="mes-select" aria-label="Mês"></select>
+        <button type="button" class="cal-nav" id="cal-prox" title="Próximo mês" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="cal-grade" id="cal-grade"></div>
+      <div class="cal-acoes">
+        <button type="button" id="dia-ant">‹ Dia anterior</button>
+        <button type="button" id="dia-prox">Próximo dia ›</button>
+      </div>
+      <p class="cal-legenda">Embaixo do dia, a taxa da carteira em CDI+ equivalente; <i></i>dia com trade. As setas ← e →
+        trocam o dia, e a aba aberta no relatório continua aberta no dia seguinte.</p>
+    </div>
+    <div class="cal-box" id="cal-dia"></div>
+  </aside>
+  <section class="cal-relatorio"><iframe id="dia-frame" title="Relatório do dia"></iframe></section>
+</div>"""
+    abas = [("calendario", "CALENDÁRIO", calendario), ("historico", "HISTÓRICO", "".join(blocos_hist)),
+            ("trades", "TRADES", "".join(blocos_trades))]
+    nav = "".join(f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
+                  for i, (aba, rotulo, _) in enumerate(abas))
+    if len(fundos) > 1:
+        nav += f'<div class="nav-direita">{_seletor_fundo([(f, nomes.get(f, "")) for f in fundos])}</div>'
+    paineis = "".join(f'<div class="perf-pane{" active" if i == 0 else ""}" data-aba="{aba}">{html}</div>'
+                      for i, (aba, _, html) in enumerate(abas))
+    dias = sorted(resumos)
+    lista = ", ".join(f"{_esc(f)}{f' ({_esc(nomes[f])})' if nomes.get(f) else ''}" for f in fundos)
+    sub = (f"Calendário diário &nbsp;|&nbsp; {'Fundos' if len(fundos) > 1 else 'Fundo'}: <strong>{lista}</strong> "
+           f"&nbsp;|&nbsp; <strong>{_plural(len(dias), 'dia')}</strong>, de <strong>{_dt(dias[0])}</strong> a "
+           f"<strong>{_dt(dias[-1])}</strong>")
+    dados = json.dumps(_dados_calendario(fundos, nomes, historico, por_dia, subpasta), ensure_ascii=False)
+    dados = dados.replace("</", "<\\/")
+    rodape = (f"Cada dia é o relatório {_esc(subpasta)}/aaaammdd.html, com a carteira, os ativos, os lotes, os trades "
+              f"e os avisos da data &nbsp;|&nbsp; Índice gerado em {datetime.now():%d/%m/%Y %H:%M}")
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taxa média — calendário</title>
+  <style>{_css()}</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-inner">
+    <div>
+      <h1>TAXA MÉDIA DE AQUISIÇÃO</h1>
+      <p class="sub">{sub}</p>
+    </div>
+    <div class="brand"><span>Itaú Asset Management</span>{_logo_tag()}</div>
+  </div>
+</div>
+
+<div class="nav-wrapper">
+  <nav class="perf-nav">{nav}</nav>
+</div>
+
+<div class="content">{paineis}</div>
+
+<div class="footer">{rodape}</div>
+
+<script type="application/json" id="calendario-dados">{dados}</script>
+<script>{_js()}</script>
+<script>{_js_indice()}</script>
+</body>
+</html>"""
+
+    caminho = os.path.join(pasta_saida, "index.html")
+    with open(caminho, "w", encoding="utf-8") as arq:
+        arq.write(html)
+    return caminho
+
+
+def _js_indice():
+    return r"""
+    // Calendário dos dias com relatório, o relatório do dia escolhido no iframe e o estado (fundo e aba) que passa
+    // de um dia para o outro. Os dados vêm do JSON calendario-dados (gerar_indice).
+    const cal = JSON.parse(document.getElementById('calendario-dados').textContent);
+    const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro',
+                   'outubro', 'novembro', 'dezembro'];
+    const SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const temDia = new Set(cal.dias);
+    const meses = Array.from(new Set(cal.dias.map(function(d){ return d.slice(0, 7); })));
+    const estado = {fundo: cal.fundoInicial, aba: 'resumo', dia: cal.dias[cal.dias.length - 1], mes: ''};
+    const grade = document.getElementById('cal-grade'), selMes = document.getElementById('cal-mes');
+    const frame = document.getElementById('dia-frame');
+
+    meses.forEach(function(m){
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = MESES[Number(m.slice(5)) - 1] + ' de ' + m.slice(0, 4);
+      selMes.appendChild(o);
+    });
+    function infoDia(dia) { return (cal.fundos[estado.fundo] || {})[dia]; }
+    function arquivo(dia) { return cal.pasta + '/' + dia.replace(/-/g, '') + '.html'; }
+    function dataLonga(dia) {
+      const p = dia.split('-').map(Number);
+      const s = new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('pt-BR',
+        {weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric'});
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    function desenharMes(mes) {
+      estado.mes = mes;
+      selMes.value = mes;
+      grade.replaceChildren();
+      SEMANA.forEach(function(s){
+        const h = document.createElement('div'); h.className = 'cal-sem'; h.textContent = s;
+        grade.appendChild(h);
+      });
+      const ano = Number(mes.slice(0, 4)), m = Number(mes.slice(5));
+      const vazios = new Date(ano, m - 1, 1).getDay(), n = new Date(ano, m, 0).getDate();
+      for (let i = 0; i < vazios; i++) grade.appendChild(document.createElement('span'));
+      for (let d = 1; d <= n; d++) {
+        const dia = mes + '-' + String(d).padStart(2, '0');
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'cal-dia';
+        const num = document.createElement('span'); num.className = 'cal-num'; num.textContent = d;
+        b.appendChild(num);
+        if (temDia.has(dia)) {
+          const info = infoDia(dia);
+          b.dataset.dia = dia;
+          const tx = document.createElement('span'); tx.className = 'cal-tx'; tx.textContent = info ? info.taxa : '—';
+          b.appendChild(tx);
+          if (info && info.trades) { const p = document.createElement('i'); p.className = 'cal-trade'; b.appendChild(p); }
+          b.title = dataLonga(dia) + (info ? ' · carteira ' + info.carteira
+            + (info.trades ? ' · ' + info.trades + (info.trades === 1 ? ' trade' : ' trades') : '')
+            : ' · o fundo não está no relatório do dia');
+          b.classList.toggle('sel', dia === estado.dia);
+          if (dia === estado.dia) b.setAttribute('aria-current', 'date');
+        } else {
+          b.disabled = true;
+        }
+        grade.appendChild(b);
+      }
+      const i = meses.indexOf(mes);
+      document.getElementById('cal-ant').disabled = i <= 0;
+      document.getElementById('cal-prox').disabled = i >= meses.length - 1;
+    }
+
+    function preencherDia() {
+      const box = document.getElementById('cal-dia');
+      box.replaceChildren();
+      const t = document.createElement('div'); t.className = 'cal-titulo'; t.textContent = dataLonga(estado.dia);
+      const f = document.createElement('div'); f.className = 'cal-fundo';
+      f.textContent = estado.fundo + (cal.nomes && cal.nomes[estado.fundo] ? ' — ' + cal.nomes[estado.fundo] : '');
+      box.append(t, f);
+      const info = infoDia(estado.dia);
+      if (info) {
+        const dl = document.createElement('dl'); dl.className = 'cal-resumo';
+        info.resumo.forEach(function(r){
+          const dt = document.createElement('dt'); dt.textContent = r[0];
+          const dd = document.createElement('dd'); dd.textContent = r[1];
+          dl.append(dt, dd);
+        });
+        box.appendChild(dl);
+      } else {
+        const p = document.createElement('p'); p.className = 'cal-legenda';
+        p.textContent = 'O fundo não está no relatório deste dia.';
+        box.appendChild(p);
+      }
+      const i = cal.dias.indexOf(estado.dia);
+      document.getElementById('dia-ant').disabled = i <= 0;
+      document.getElementById('dia-prox').disabled = i >= cal.dias.length - 1;
+      const a = document.createElement('a');
+      a.className = 'cal-abrir'; a.href = arquivo(estado.dia); a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = 'Abrir este dia em nova aba ↗';
+      box.appendChild(a);
+    }
+
+    function abrirDia(dia, aba) {
+      if (!temDia.has(dia)) return;
+      if (aba) estado.aba = aba;
+      estado.dia = dia;
+      desenharMes(dia.slice(0, 7));
+      preencherDia();
+      frame.src = arquivo(dia) + '#fundo=' + encodeURIComponent(estado.fundo) + '&aba=' + encodeURIComponent(estado.aba);
+      mostrarAba('calendario');
+    }
+    function passarDia(passo) {
+      const i = cal.dias.indexOf(estado.dia) + passo;
+      if (i >= 0 && i < cal.dias.length) abrirDia(cal.dias[i]);
+    }
+
+    document.getElementById('cal-ant').addEventListener('click', function(){
+      const i = meses.indexOf(estado.mes);
+      if (i > 0) desenharMes(meses[i - 1]);
+    });
+    document.getElementById('cal-prox').addEventListener('click', function(){
+      const i = meses.indexOf(estado.mes);
+      if (i < meses.length - 1) desenharMes(meses[i + 1]);
+    });
+    selMes.addEventListener('change', function(){ desenharMes(selMes.value); });
+    grade.addEventListener('click', function(e){
+      const b = e.target.closest('.cal-dia[data-dia]');
+      if (b) abrirDia(b.dataset.dia);
+    });
+    document.getElementById('dia-ant').addEventListener('click', function(){ passarDia(-1); });
+    document.getElementById('dia-prox').addEventListener('click', function(){ passarDia(1); });
+    document.addEventListener('keydown', function(e){
+      if (abaAtual() !== 'calendario' || (e.target.matches && e.target.matches('input, select, textarea'))) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); passarDia(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); passarDia(1); }
+    });
+    // linha de tabela ou data de gráfico das abas HISTÓRICO e TRADES
+    document.addEventListener('abrir-dia', function(e){ abrirDia(e.detail.dia, e.detail.aba); });
+
+    // O relatório do dia avisa a aba e o fundo escolhidos nele (o fundo só vale se o relatório tem o fundo do
+    // índice: senão ele mostra outro sem a pessoa ter pedido); o seletor de fundo do índice avisa o relatório.
+    window.addEventListener('message', function(e){
+      const m = e.data;
+      if (!m || m.taxaMedia !== 'estado' || e.source !== frame.contentWindow) return;
+      if (m.aba) estado.aba = m.aba;
+      if (m.fundo && m.fundo !== estado.fundo && cal.fundos[m.fundo] && infoDia(estado.dia)) mostrarFundo(m.fundo);
+    });
+    document.addEventListener('taxa-media', function(e){
+      const fundo = e.detail.fundo;
+      if (!fundo || fundo === estado.fundo) return;
+      estado.fundo = fundo;
+      desenharMes(estado.mes);
+      preencherDia();
+      if (frame.contentWindow) frame.contentWindow.postMessage({taxaMedia: 'fundo', fundo: fundo}, '*');
+    });
+
+    abrirDia(estado.dia);
+    """
