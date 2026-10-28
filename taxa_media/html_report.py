@@ -564,14 +564,16 @@ def _barras_h(linhas, titulo_valor, ref=None, titulo_extra=None):
             f'style="width:100%;display:block;overflow:visible">' + "".join(els + rotulos + linhas_hover) + "</svg>")
 
 
-def _cascata(itens, total, tip_total, rotulo_total="CARTEIRA"):
-    """Cascata vertical (a do attribution): cada item sobe ou desce a partir do acumulado e a última barra é o total.
-    itens: [(rótulo, valor, tip)]."""
+def _cascata(itens, total, tip_total, rotulo_total="CARTEIRA", casas=3):
+    """Cascata vertical (a do attribution): cada item sobe ou desce a partir do acumulado e a última barra é o total,
+    com o valor em cima de cada barra (embaixo, se negativo). itens: [(rótulo, valor, tip, alvo)]; alvo =
+    ("ativo", código) abre a ficha do ativo no clique, na barra ou no rótulo do eixo; ("ir", aba) abre a aba; None,
+    nada."""
     barras, acum = [], 0.0
-    for rotulo, v, tip in itens:
-        barras.append((rotulo, acum, acum + v, ITAU_GREEN if v >= 0 else ITAU_RED, False, tip))
+    for rotulo, v, tip, alvo in itens:
+        barras.append((rotulo, acum, acum + v, ITAU_GREEN if v >= 0 else ITAU_RED, False, tip, alvo))
         acum += v
-    barras.append((rotulo_total, 0.0, total, COR_CARTEIRA, True, tip_total))
+    barras.append((rotulo_total, 0.0, total, COR_CARTEIRA, True, tip_total, None))
     n = len(barras)
     muitos = n > 10
     W, PL, PR, PT = 1000, 70, 16, 22
@@ -595,29 +597,43 @@ def _cascata(itens, total, tip_total, rotulo_total="CARTEIRA"):
         els.append(f'<text x="{PL - 8}" y="{yg + 4:.1f}" text-anchor="end" font-size="11" fill="{_TINTA_FRACA}">'
                    f'{_fmt_tick(t, passo)}</text>')
     fim_anterior = None
-    for i, (rotulo, ini, fim, cor, eh_total, tip) in enumerate(barras):
+    halo = 'stroke="#fff" stroke-width="3" paint-order="stroke"'  # o valor fica legível sobre o tracejado
+    for i, (rotulo, ini, fim, cor, eh_total, tip, alvo) in enumerate(barras):
         bx = PL + i * vaga + (vaga - bar_w) / 2
         cx = bx + bar_w / 2
         y_top, y_bot = _y(max(ini, fim)), _y(min(ini, fim))
         bh = max(y_bot - y_top, 2.0)
         v = fim - ini
+        clique = " lk-ativo" if alvo and alvo[0] == "ativo" else ""
+        dados = (f' data-ativo="{_esc(alvo[1])}"' if clique else f' data-ir="{_esc(alvo[1])}"') if alvo else ""
         if fim_anterior is not None and not eh_total:
             els.append(f'<line x1="{bx - (vaga - bar_w):.1f}" y1="{fim_anterior:.1f}" x2="{bx:.1f}" '
                        f'y2="{fim_anterior:.1f}" stroke="#c8d0dc" stroke-width="1.2" stroke-dasharray="4,3"/>')
         els.append(f'<rect x="{bx:.1f}" y="{y_top:.1f}" width="{bar_w:.1f}" height="{bh:.1f}" fill="{cor}" '
-                   f'opacity="{0.9 if eh_total else 0.84}" rx="3" class="svg-bar" data-tip="{_esc(tip)}"/>')
-        if eh_total or (bh >= 16 and not muitos) or (muitos and bh >= 26):
-            texto = _cdi_mais(v) if eh_total else ("+" if v > 0 else "") + _br(v, 2)
-            ly = y_top - 5 if v >= 0 else y_bot + 13
-            els.append(f'<text x="{cx:.1f}" y="{ly:.1f}" text-anchor="middle" font-size="10.5" font-weight="700" '
-                       f'fill="{_TINTA}">{_esc(texto)}</text>')
-        ly = H - PB + 14
+                   f'opacity="{0.9 if eh_total else 0.84}" rx="3" class="svg-bar{clique}"{dados} '
+                   f'data-tip="{_esc(tip)}"/>')
+        texto = _cdi_mais(v) if eh_total else ("+" if v > 0 else "−" if v < 0 else "") + _br(abs(v), casas)
+        ly = y_top - 5 if v >= 0 else y_bot + 13
+        els.append(f'<text x="{cx:.1f}" y="{ly:.1f}" text-anchor="middle" font-size="10.5" font-weight="700" '
+                   f'fill="{_TINTA}" {halo}>{_esc(texto)}</text>')
+
+        # rótulo do eixo; com alvo, um retângulo transparente por cima (maior que o texto) recebe o mouse e o clique
+        nome = str(rotulo)[:22 if muitos else 16]
+        larg, ly = 6.2 * len(nome) + 10, H - PB + 14
         if muitos:
-            els.append(f'<text x="{cx:.1f}" y="{ly:.1f}" text-anchor="end" font-size="10.5" fill="#444" '
-                       f'transform="rotate(-45,{cx:.1f},{ly:.1f})">{_esc(str(rotulo)[:22])}</text>')
+            giro = f' transform="rotate(-45,{cx:.1f},{ly:.1f})"'
+            caixa, texto_eixo = (cx - larg + 2, ly - 12, larg + 4), (f'<text x="{cx:.1f}" y="{ly:.1f}" '
+                                                                      f'text-anchor="end" font-size="10.5"{giro}')
         else:
-            els.append(f'<text x="{cx:.1f}" y="{ly + 4:.1f}" text-anchor="middle" font-size="10.5" fill="#444">'
-                       f'{_esc(str(rotulo)[:16])}</text>')
+            giro = ""
+            caixa, texto_eixo = (cx - larg / 2, ly - 8, larg), (f'<text x="{cx:.1f}" y="{ly + 4:.1f}" '
+                                                                 f'text-anchor="middle" font-size="10.5"')
+        if alvo:
+            els.append(f'<rect class="svg-alvo{clique}"{dados} x="{caixa[0]:.1f}" y="{caixa[1]:.1f}" '
+                       f'width="{caixa[2]:.1f}" height="17"{giro} data-tip="{_esc(tip)}"/>')
+            els.append(f'{texto_eixo} class="eixo-link">{_esc(nome)}</text>')
+        else:
+            els.append(f'{texto_eixo} fill="#444">{_esc(nome)}</text>')
         fim_anterior = _y(fim)
     return (f'<svg viewBox="0 0 {W} {H}" font-family="Segoe UI,Arial,sans-serif" '
             f'style="width:100%;display:block;overflow:visible">' + "".join(els) + "</svg>")
@@ -907,18 +923,22 @@ def _aba_resumo(f):
         itens, acum = [], 0.0
         for r in principais.itertuples():
             acum += r.contrib
-            itens.append((r.codigo, r.contrib, f"{r.codigo} · {r.grupo}\nContribuição: {_br(r.contrib, 4)} p.p.\n"
-                          f"Taxa: {_taxa(r.grupo, r.taxa_media)} · peso {_br(r.peso, 2)}%\nAcumulado: {_cdi_mais(acum)}"))
+            nome = "" if _vazio(r.nome_ativo) else f"\n{r.nome_ativo}"
+            itens.append((r.codigo, r.contrib, f"{r.codigo} · {r.grupo}{nome}\nContribuição: {_br(r.contrib, 4)} p.p.\n"
+                          f"Taxa: {_taxa(r.grupo, r.taxa_media)} · peso {_br(r.peso, 2)}%\nAcumulado: {_cdi_mais(acum)}"
+                          "\nClique para abrir a ficha", ("ativo", r.codigo)))
         if len(resto):
             acum += resto["contrib"].sum()
             itens.append((f"Demais ({len(resto)})", resto["contrib"].sum(),
                           f"Demais {_plural(len(resto), 'ativo')}\nContribuição: {_br(resto['contrib'].sum(), 4)} p.p.\n"
-                          f"Peso somado: {_br(resto['peso'].sum(), 2)}%\nAcumulado: {_cdi_mais(acum)}"))
+                          f"Peso somado: {_br(resto['peso'].sum(), 2)}%\nAcumulado: {_cdi_mais(acum)}\n"
+                          f"Clique para ver todos na aba ATIVOS", ("ir", "ativos")))
         html += _secao("De onde vem a taxa da carteira: contribuição de cada ativo (p.p. de CDI+)",
                        _cascata(itens, taxa, f"Carteira\n{_cdi_mais(taxa)} (CDI+ equivalente)\n{_rs(fin)}"),
                        "Contribuição = peso do ativo no financeiro × taxa dele em CDI+ equivalente; a soma das barras é a "
-                       "taxa da carteira. Os maiores em valor absoluto; o resto vai em Demais. Todos os ativos estão na "
-                       "aba ATIVOS.")
+                       "taxa da carteira. Os maiores em valor absoluto; o resto vai em Demais. Clique numa barra ou no "
+                       "código do ativo, embaixo, para abrir a ficha com o cadastro; Demais abre a aba ATIVOS, com "
+                       "todos os ativos.")
 
     if len(f["carteira"]):
         cart = f["carteira"].copy()
@@ -1351,7 +1371,8 @@ GLOSSARIO = [
 ]
 
 NAVEGACAO = [
-    "As abas de cima trocam a visão; com mais de um fundo, o seletor à direita troca o fundo em todas elas.",
+    "As abas de cima trocam a visão; o seletor FUNDO, à direita, lista os fundos da rodada e troca o fundo em "
+    "todas elas.",
     "Clique no título de uma coluna para ordenar; a caixa de busca e os seletores acima de cada tabela filtram as "
     "linhas.",
     "Clique num ativo (tabela ou gráfico) para abrir a ficha dele: lotes em aberto, trades e avisos.",
@@ -1447,7 +1468,9 @@ def _css():
     .perf-tab-btn:hover {{ background: {ITAU_ORANGE}18; }}
     .perf-tab-btn.active {{ background: {ITAU_ORANGE}; color: #fff; box-shadow: 0 2px 10px {ITAU_ORANGE}55; }}
     .nav-fundo {{ margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .82rem;
-                  font-weight: 600; color: {ITAU_DARK}; }}
+                  font-weight: 700; color: {ITAU_DARK}; text-transform: uppercase; letter-spacing: .04em; }}
+    .nav-fundo select {{ min-width: 220px; max-width: 420px; font-weight: 600; color: {ITAU_DARK};
+                         text-transform: none; letter-spacing: 0; }}
     .perf-pane {{ display: none; animation: fadeIn .2s; }}
     .perf-pane.active {{ display: block; }}
     @keyframes fadeIn {{ from {{ opacity:0; transform:translateY(4px); }} to {{ opacity:1; transform:none; }} }}
@@ -1544,7 +1567,10 @@ def _css():
 
     .svg-bar {{ cursor: pointer; transition: opacity .12s, filter .12s; }}
     .svg-bar:hover {{ opacity: 1 !important; filter: brightness(1.14) drop-shadow(0 2px 6px rgba(0,0,0,.22)); }}
-    .svg-linha, .svg-ponto {{ fill: transparent; cursor: pointer; }}
+    .svg-linha, .svg-ponto, .svg-alvo {{ fill: transparent; cursor: pointer; }}
+    /* rótulo do eixo clicável (cascata): o retângulo .svg-alvo por cima recebe o mouse e destaca o texto */
+    .eixo-link {{ fill: {ITAU_DARK}; font-weight: 600; pointer-events: none; }}
+    .svg-alvo:hover + .eixo-link {{ fill: {ITAU_ORANGE}; text-decoration: underline; }}
     .svg-linha:hover {{ fill: {ITAU_DARK}; fill-opacity: .05; }}
     .svg-ponto:hover {{ fill: {ITAU_DARK}; fill-opacity: .10; }}
     .serie-overlay.clicavel {{ cursor: pointer; }}
@@ -2083,7 +2109,8 @@ _ABAS_FUNDO = [("resumo", "RESUMO", _aba_resumo), ("historico", "HISTÓRICO", _a
 
 
 def _seletor_fundo(fundos):
-    """Seletor de fundo da barra de abas; fundos: [(fundo, nome)]."""
+    """Seletor de fundo da barra de abas, sempre visível (com um fundo só, mostra onde se escolhe); fundos:
+    [(fundo, nome)], os fundos da rodada."""
     opcoes = "".join(f'<option value="{_esc(fundo)}">{_esc(fundo)}{" — " + _esc(nome) if nome else ""}</option>'
                      for fundo, nome in fundos)
     return f'<label class="nav-fundo">Fundo <select id="fundo-sel" class="mes-select">{opcoes}</select></label>'
@@ -2162,7 +2189,7 @@ def gerar_html(caminho, tabelas, notas=(), dia=None, trades_desde=None):
 
     nav = "".join(f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
                   for i, (aba, rotulo, _) in enumerate(abas))
-    direita = [_seletor_fundo([(f["fundo"], f["nome"]) for f in fundos])] if len(fundos) > 1 else []
+    direita = [_seletor_fundo([(f["fundo"], f["nome"]) for f in fundos])] if fundos else []
     if dia is not None:
         direita.append('<a class="nav-cal" href="../index.html" title="Calendário com todos os dias">CALENDÁRIO</a>')
     if direita:
@@ -2352,8 +2379,7 @@ def gerar_indice(pasta_saida, subpasta="diario"):
             ("trades", "TRADES", "".join(blocos_trades))]
     nav = "".join(f'<button class="perf-tab-btn{" active" if i == 0 else ""}" data-aba="{aba}">{rotulo}</button>'
                   for i, (aba, rotulo, _) in enumerate(abas))
-    if len(fundos) > 1:
-        nav += f'<div class="nav-direita">{_seletor_fundo([(f, nomes.get(f, "")) for f in fundos])}</div>'
+    nav += f'<div class="nav-direita">{_seletor_fundo([(f, nomes.get(f, "")) for f in fundos])}</div>'
     paineis = "".join(f'<div class="perf-pane{" active" if i == 0 else ""}" data-aba="{aba}">{html}</div>'
                       for i, (aba, _, html) in enumerate(abas))
     dias = sorted(resumos)

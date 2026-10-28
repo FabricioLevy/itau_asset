@@ -102,7 +102,7 @@ Ao lado do Excel sai um `.html` com o mesmo nome, gerado pelo `html_report.py` n
 | Aba | O que mostra |
 |---|---|
 | FUNDOS | só com mais de um fundo: a taxa da carteira de cada fundo em barras e a tabela da aba Fundos. Clicar num fundo abre o resumo dele |
-| RESUMO | cartões com a taxa da carteira (com a evolução, se houver série), %CDI, CDI+, financeiro e avisos. Abaixo, a composição do financeiro por grupo e a cascata de contribuição de cada ativo para a taxa da carteira. Depois, a tabela por grupo e os cartões de compras e vendas do período |
+| RESUMO | cartões com a taxa da carteira (com a evolução, se houver série), %CDI, CDI+, financeiro e avisos. Abaixo, a composição do financeiro por grupo e a cascata de contribuição de cada ativo para a taxa da carteira, com o valor em cada barra; clicar na barra ou no código do ativo, no eixo, abre a ficha dele com o cadastro, e Demais abre a aba ATIVOS. Depois, a tabela por grupo e os cartões de compras e vendas do período |
 | HISTÓRICO | só com `--desde`: taxa da carteira e spread dos CDI+ num painel, taxa dos %CDI em outro e financeiro por grupo num terceiro, todos no mesmo eixo de datas. Um resumo do período e a tabela, uma linha por data. Um dia fora da curva (o começo do fundo, com um ou dois ativos) não achata o gráfico: a escala ignora os extremos (percentis 3% e 97%), a linha é cortada na borda e o painel avisa quantos valores ficaram fora |
 | ATIVOS | taxa de cada ativo em CDI+ equivalente (barras, com a linha da carteira) e o peso dele no financeiro. Na tabela, também a contribuição de cada ativo: peso × taxa em CDI+ equivalente. A soma das contribuições é a taxa da carteira |
 | LOTES | quantos lotes têm a taxa da boleta, da VCRA, manual ou nenhuma, e a dispersão boleta × VCRA de cada grupo. Na diagonal as duas taxas são iguais; os lotes com aviso Boleta × VCRA saem em vermelho, com o código. Depois, a tabela de lotes em aberto |
@@ -112,7 +112,7 @@ Ao lado do Excel sai um `.html` com o mesmo nome, gerado pelo `html_report.py` n
 
 Para navegar:
 
-- Com mais de um fundo, o seletor à direita das abas troca o fundo em todas as abas.
+- O seletor FUNDO, à direita das abas, lista os fundos da rodada, com o nome da aba Fundos, e troca o fundo em todas as abas. Para ter vários fundos no relatório, basta pôr os fundos na aba Fundos do `input/fundos.xlsx` (rodar = S) e rodar sem `--fundo`.
 - Cada tabela tem busca por texto, sem acento nem caixa, e seletores (grupo, fonte da taxa, operação, tipo de aviso). O contador mostra quantas linhas sobraram.
 - Clicar num ativo, numa tabela ou num gráfico, abre a ficha dele: o nome e a descrição do papel, cartões com taxa, financeiro, peso e quantidades, o cadastro e os lotes, trades e avisos do ativo. O cadastro vem em três quadros (emissão; crédito e risco; identificação), com as alterações de valor (ex.: troca do emissor) e, num bloco que abre no clique, todos os campos, com a data de cada valor e a fonte. A aba ATIVOS também ganha as colunas Grupo econômico e Rating, e a busca da tabela acha os ativos por elas.
 - Na aba TRADES, clicar num dia, no gráfico ou na tabela Trades por dia, filtra a tabela de trades. O botão do dia limpa o filtro.
@@ -148,7 +148,7 @@ Para navegar no calendário:
 
 - Clique num dia ou use as setas ← e → do teclado. O seletor de mês e os botões ‹ › trocam o mês.
 - A aba aberta no relatório continua aberta quando você troca de dia. Dá para ver os ATIVOS de um dia e passar para o seguinte direto nos ATIVOS.
-- Com mais de um fundo, o seletor de fundo do índice vale para o calendário, o quadro do dia, as abas consolidadas e o relatório aberto.
+- O seletor FUNDO do índice lista os fundos que têm relatório diário e vale para o calendário, o quadro do dia, as abas consolidadas e o relatório aberto.
 - "Abrir este dia em nova aba" abre o arquivo do dia sozinho.
 
 O índice é refeito do zero a cada rodada com `--diario`, a partir de todos os arquivos `aaaammdd.html` da pasta. Por isso, rodar todo dia com `--diario`, sem `--desde`, soma o novo dia aos que já estão lá. Um dia rodado de novo é regravado, com os fundos da última rodada. Cada relatório diário guarda um resumo (JSON no `<head>`) que o índice lê, e assim o índice não depende de outro arquivo. Arquivos da pasta que não são relatórios ficam de fora.
