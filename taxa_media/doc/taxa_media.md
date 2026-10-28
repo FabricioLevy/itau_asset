@@ -67,7 +67,7 @@ python __main__.py --diario                                 (a última data, som
 | `--data` | última data de cada fundo na `VW_FUNDOS_POSICAO` | data de referência, dd/mm/aaaa, a mesma para todos os fundos; com `--desde`, é o fim da série |
 | `--desde` | sem série | refaz o cálculo em cada data desde dd/mm/aaaa. Sozinho (ou com `inicio`), começa na primeira data do fundo na `VW_FUNDOS_POSICAO`. Grava a aba Histórico (seção 6.14) |
 | `--frequencia` | `mensal` | datas da série: `mensal` (a última data com posição de cada mês) ou `diaria` (todas as datas com posição). Só vale com `--desde` |
-| `--fonte` | `boleta` | taxa dos CDI+: `boleta` (negociada) ou `vcra` (custódia, calculada pelo PU pago). Os %CDI usam sempre a boleta |
+| `--fonte` | `lake` | taxa dos CDI+: `lake` (a boleta do Lake, negociada) ou `vcra` (custódia, calculada pelo PU pago). Os %CDI usam sempre o Lake. `boleta`, o nome antigo, vale como `lake` |
 | `--cdi` | `CDIAcumulado` da `FUNDOS_DADOS_INDICES` na data de cada fundo | CDI em % a.a., usado só para converter %CDI em CDI+ equivalente |
 | `--html` | — | só regera o relatório HTML de um `.xlsx` já gravado, sem o banco e sem o Excel de entrada; o `.html` sai ao lado do `.xlsx`. Serve para gerar o relatório numa máquina sem acesso ao DBSX337 |
 | `--diario` | — | grava também um relatório por data em `output/diario/aaaammdd.html` e refaz o `output/index.html`. Com `--desde`, a série passa a ser diária (salvo `--frequencia mensal`) |
@@ -216,7 +216,7 @@ Todas as leituras usam `WITH (NOLOCK)` para não bloquear a base. A contrapartid
 | Tabela | Filtro | Colunas usadas | Para quê |
 |---|---|---|---|
 | `VCRAOPRF` | `CLCLI_CD` = fundo, `SG_OPERACAO` C ou V, `DT` até a data (todos os tipos; o escopo é aplicado depois, seção 6.2) | `CD`, `CD_CETIP_SELIC`, `ISIN`, `RFTP_CD`, `IDDIR_CD`, `DT`, `SG_OPERACAO`, `QT`, `VL_PU_OPERACAO`, `IDDIR_PC`, `VL_JUROS_EMISSAO`, `VL_JUROSOPER` | lotes, quantidades, tipo, indexador e taxa da custódia |
-| `FUNDOS_OPERACOES` | `codigo_IAM_fundo` = fundo, ativos dos tipos incluídos, `date_operacao` até a data + 5 dias | `codigo_IAM_ativo`, `date_operacao`, `exec_qt`, `exec_preco`, `exec_taxa` | taxa negociada |
+| `FUNDOS_OPERACOES` (Lake) | `codigo_IAM_fundo` = fundo, ativos dos tipos incluídos, `date_operacao` até a data + 5 dias | `codigo_IAM_ativo`, `date_operacao`, `exec_qt`, `exec_preco`, `exec_taxa` | taxa negociada, a boleta do Lake (o sistema que não é a VCRA) |
 | `VW_FUNDOS_POSICAO` | `codigo_IAM_fundo` = fundo, `tipo = 'Fixed Income'`, 30 dias até a data (com `--desde`, de 30 dias antes do início da série até a data) | `codigo_IAM_ativo`, `isin`, `date`, `quantidade`, `total` | conferência de quantidade e PU; as datas da série; sem `--data`, a última data do fundo; com `--desde` sem data, a primeira |
 | `FUNDOS_DADOS_INDICES` | `codigo_IAM_indice = 'CDIAcumulado'` com `pnl_perc` > 0, a série inteira; vale o último dia até cada data | `date`, `pnl_perc` | CDI da conversão (só sem `--cdi`; uma consulta por execução) |
 | `FUNDOS_CADASTRO_ATIVOS` | `codigo_IAM_ativo` nos ativos da VCRA no escopo e da posição, `date_change` até a data | `codigo_IAM_ativo`, `campo`, `date_change`, `valor_str`, `valor_num`, `valor_date`, `fonte` | só a ficha do ativo no HTML (emissor, rating, vencimento, descrição...); não entra no cálculo |
@@ -303,11 +303,13 @@ Exemplo: o 9,33 do 26A1798621, que é um %CDI, torna a boleta inválida.
 
 | Grupo | Boleta | `--fonte` | Taxa usada | Fonte da taxa |
 |---|---|---|---|---|
-| %CDI | válida | qualquer | a da boleta, em % do CDI | boleta |
+| %CDI | válida | qualquer | a da boleta, em % do CDI | Lake |
 | %CDI | inválida ou sem boleta | qualquer | nenhuma: o lote fica fora da média do ativo | (vazio) |
-| CDI+ | válida | `boleta` | a da boleta, em spread | boleta |
+| CDI+ | válida | `lake` | a da boleta, em spread | Lake |
 | CDI+ | válida | `vcra` | `VL_JUROSOPER` da VCRA | VCRA |
 | CDI+ | inválida ou sem boleta | qualquer | `VL_JUROSOPER` da VCRA | VCRA |
+
+A boleta vem do Lake (`FUNDOS_OPERACOES`), o sistema que não é a VCRA; por isso a fonte da taxa sai como Lake, VCRA ou manual. Saídas gravadas antes dessa troca têm `boleta` na fonte; o relatório HTML mostra como Lake.
 
 ### 6.8 Correções manuais (aba Correções)
 
@@ -468,7 +470,7 @@ Pela boleta: (10.000 × 2,8365 + 11.860 × 4,1055) ÷ 21.860 = 3,5250, ou seja, 
 
 - **Tipos por lista, e não "tudo menos compromissada".** A `CRIOP` usa o código do CRI de lastro: o lote L192135 é uma compromissada do 25L0158987, que o fundo também tem comprado em definitivo. Incluída, ela somaria 11.706 unidades a 90% do CDI ao CRI. Por isso só entra o que está marcado com S, e tipo desconhecido vira aviso.
 - **Só papéis atrelados ao CDI.** O grupo vem do spread de emissão; um papel IPCA+ ou pré cairia no CDI+ e misturaria spread de IPCA com spread de CDI. Juntar esses papéis na média da carteira exigiria uma premissa de inflação ou de curva.
-- **Fonte da taxa nos CDI+.** O padrão é a boleta: é a taxa negociada, segue a mesma convenção dos %CDI e não tem os valores sem sentido da VCRA (ex.: CDI−2,59). A VCRA sai do PU pago e capta descontos de primário (ex.: 26G4614294 a 947,99: boleta 4,00, VCRA 6,75). Em 23/10/2026, o grupo CDI+ do ITAIMOBCDIFII deu CDI+2,46 pela boleta e CDI+2,63 pela VCRA. `--fonte vcra` troca a fonte.
+- **Fonte da taxa nos CDI+.** O padrão é a boleta do Lake (`--fonte lake`): é a taxa negociada, segue a mesma convenção dos %CDI e não tem os valores sem sentido da VCRA (ex.: CDI−2,59). A VCRA sai do PU pago e capta descontos de primário (ex.: 26G4614294 a 947,99: boleta 4,00, VCRA 6,75). Em 23/10/2026, o grupo CDI+ do ITAIMOBCDIFII deu CDI+2,46 pela boleta e CDI+2,63 pela VCRA. `--fonte vcra` troca a fonte.
 - **26A1798621.** A boleta tem 9,33 num papel de 101% do CDI; o valor deve ser 109,33% do CDI. O ativo fica fora da média até a mesa confirmar; a correção já está na aba Correções com `aplicar = N`.
 - **CDI flat.** A conversão de %CDI para CDI+ supõe o CDI constante. Com a curva de juros, o resultado muda um pouco. A mesma simplificação explica parte da diferença de até ~1,5 ponto entre a VCRA convertida e a boleta nos %CDI.
 - **Limites definidos à mão.** Ficam no topo do script e podem ser ajustados:
@@ -574,10 +576,10 @@ flowchart TD
     temSpread -->|"não"| grpPct["%CDI<br/>taxa em % do CDI"]
     grpCdi --> valCdi{"Boleta válida?<br/>taxa abaixo de 50"}
     grpPct --> valPct{"Boleta válida?<br/>taxa de 50 ou mais"}
-    valCdi -->|"sim, --fonte boleta"| tBolCdi["taxa = boleta<br/>spread"]
+    valCdi -->|"sim, --fonte lake"| tBolCdi["taxa = boleta do Lake<br/>spread"]
     valCdi -->|"sim, --fonte vcra"| tVcra["taxa = VCRA<br/>VL_JUROSOPER"]
     valCdi -->|"não ou sem boleta"| tVcra
-    valPct -->|"sim"| tBolPct["taxa = boleta<br/>% do CDI"]
+    valPct -->|"sim"| tBolPct["taxa = boleta do Lake<br/>% do CDI"]
     valPct -->|"não ou sem boleta"| tNada["sem taxa"]
     tBolCdi --> corr{"Lote na aba<br/>Correções?"}
     tVcra --> corr

@@ -19,7 +19,7 @@ SET NOCOUNT ON;
 
 DECLARE @fundo   varchar(20) = 'ITAIMOBCDIFII';
 DECLARE @data    date        = NULL;      -- NULL = última data da posição do fundo
-DECLARE @fonte   varchar(6)  = 'BOLETA';  -- taxa dos CDI+: 'BOLETA' (negociada) ou 'VCRA' (pelo PU pago)
+DECLARE @fonte   varchar(6)  = 'LAKE';    -- taxa dos CDI+: 'LAKE' (boleta do Lake, negociada) ou 'VCRA' (pelo PU pago)
 DECLARE @cdi     float       = NULL;      -- CDI % a.a. para converter %CDI em CDI+; NULL = CDIAcumulado
 DECLARE @janela  int         = 5;         -- dias entre a compra na VCRA e a data da boleta
 DECLARE @tol_pu  float       = 0.0001;    -- PU da boleta x PU da VCRA, para casar sem a mesma quantidade
@@ -125,10 +125,10 @@ validada AS (
 )
 SELECT  v.*,
         CASE WHEN k.CD IS NOT NULL THEN k.taxa
-             WHEN v.boleta_ok = 1 AND (v.grupo = '%CDI' OR @fonte = 'BOLETA') THEN v.taxa_boleta
+             WHEN v.boleta_ok = 1 AND (v.grupo = '%CDI' OR @fonte <> 'VCRA') THEN v.taxa_boleta
              WHEN v.grupo = 'CDI+' THEN v.taxa_vcra END AS taxa,
         CASE WHEN k.CD IS NOT NULL THEN 'manual'
-             WHEN v.boleta_ok = 1 AND (v.grupo = '%CDI' OR @fonte = 'BOLETA') THEN 'boleta'
+             WHEN v.boleta_ok = 1 AND (v.grupo = '%CDI' OR @fonte <> 'VCRA') THEN 'Lake'
              WHEN v.grupo = 'CDI+' THEN 'VCRA' ELSE '' END AS fonte_taxa,
         k.motivo AS motivo_correcao
 INTO    #lotes
@@ -253,8 +253,9 @@ WHERE   NOT EXISTS (SELECT 1 FROM #lotes l WHERE l.CD = k.CD COLLATE DATABASE_DE
 INSERT #avisos                                   -- boleta x VCRA acima do limite (só conferência)
 SELECT  11, 'Boleta × VCRA', codigo, CD,
         CONCAT('boleta ', FORMAT(taxa_boleta, 'N2', 'pt-BR'), ' × VCRA ', FORMAT(taxa_vcra_conv, 'N2', 'pt-BR'),
-               ' (PU ', FORMAT(pu_compra, 'N2', 'pt-BR'), '); vale a ',
-               CASE WHEN fonte_taxa = 'manual' THEN 'correção manual' ELSE fonte_taxa END)
+               ' (PU ', FORMAT(pu_compra, 'N2', 'pt-BR'), '); ',
+               CASE fonte_taxa WHEN 'manual' THEN 'vale a correção manual' WHEN 'Lake' THEN 'vale a taxa do Lake'
+                               ELSE 'vale a taxa da VCRA' END)
 FROM    #lotes
 WHERE   qt_aberta > 0 AND boleta_ok = 1
   AND   ABS(dif_boleta_vcra) > CASE grupo WHEN 'CDI+' THEN @div_cdi ELSE @div_pct END;

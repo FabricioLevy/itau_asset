@@ -31,8 +31,9 @@
 #   grupo     CDI+ se o ativo tem spread de emissão (VL_JUROS_EMISSAO > 0); senão %CDI, com a emissão no
 #             IDDIR_PC. O indexador da VW_FUNDOS_POSICAO classifica errado alguns papéis.
 #   taxa      %CDI: só a boleta — a VCRA grava %CDI como IDDIR_PC + spread, e isso não converte de forma
-#             consistente para o % do CDI da boleta. CDI+: a boleta (--fonte boleta, padrão) ou a VCRA, que
-#             sai do PU pago (--fonte vcra); sem boleta válida, a VCRA.
+#             consistente para o % do CDI da boleta. CDI+: a boleta (--fonte lake, padrão) ou a VCRA, que
+#             sai do PU pago (--fonte vcra); sem boleta válida, a VCRA. A boleta vem do Lake (FUNDOS_OPERACOES), o
+#             sistema que não é a VCRA: a fonte da taxa sai como Lake, VCRA ou manual.
 #             Boleta válida: %CDI >= 50 (% do CDI), CDI+ < 50 (spread). Lote sem taxa fica fora da média do
 #             ativo; a aba Correções corrige a taxa de lotes específicos.
 #   ativo     média das taxas dos lotes, ponderada pela quantidade em aberto.
@@ -406,12 +407,13 @@ def casar_boletas(compras, boletas):
 
 def _taxa_usada(df, fonte):
     """(boleta válida, taxa usada, fonte da taxa) de cada lote ou trade, a partir de grupo, taxa_boleta e
-    taxa_vcra: o %CDI só usa a boleta; o CDI+ usa a boleta (fonte boleta) ou a VCRA, e a VCRA sem boleta válida."""
+    taxa_vcra: o %CDI só usa a boleta do Lake; o CDI+ usa a boleta (fonte lake) ou a VCRA (fonte vcra), e a VCRA sem
+    boleta válida. A fonte sai como Lake, VCRA ou vazia (sem taxa)."""
     cdi_mais = df["grupo"] == "CDI+"
     boleta_ok = np.where(cdi_mais, df["taxa_boleta"] < LIMITE_CONVENCAO, df["taxa_boleta"] >= LIMITE_CONVENCAO)
-    usa_boleta = boleta_ok & (~cdi_mais | (fonte == "boleta"))
+    usa_boleta = boleta_ok & (~cdi_mais | (fonte != "vcra"))
     return (boleta_ok, np.where(usa_boleta, df["taxa_boleta"], np.where(cdi_mais, df["taxa_vcra"], np.nan)),
-            np.where(usa_boleta, "boleta", np.where(cdi_mais, "VCRA", "")))
+            np.where(usa_boleta, "Lake", np.where(cdi_mais, "VCRA", "")))
 
 
 def _vcra_na_convencao(df, cdi_d):
@@ -468,8 +470,9 @@ def montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos):
         lotes.loc[sel, "fonte_taxa"] = "manual"
 
     abertos = lotes[lotes["qt_aberta"] > 0].reset_index(drop=True)
-    consequencia = {"boleta": "", "VCRA": "usada a taxa da VCRA", "manual": "usada a correção manual",
+    consequencia = {"Lake": "", "VCRA": "usada a taxa da VCRA", "manual": "usada a correção manual",
                     "": "lote sem taxa, fora da média do ativo"}
+    vale = {"Lake": "vale a taxa do Lake", "VCRA": "vale a taxa da VCRA", "manual": "vale a correção manual"}
     for r in abertos.itertuples():
         if pd.isna(r.taxa_boleta):
             _aviso(avisos, "Sem boleta", r.codigo, f"nenhuma boleta casada: {consequencia[r.fonte_taxa]}", r.CD)
@@ -478,8 +481,7 @@ def montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos):
                    f"do {r.grupo}: {consequencia[r.fonte_taxa]}", r.CD)
         elif abs(r.dif_boleta_vcra) > DIVERGENCIA[r.grupo]:
             _aviso(avisos, "Boleta × VCRA", r.codigo, f"boleta {_br(r.taxa_boleta)} × VCRA {_br(r.taxa_vcra_conv)} "
-                   f"(PU {_br(r.pu_compra)}); vale a {'correção manual' if r.fonte_taxa == 'manual' else r.fonte_taxa}",
-                   r.CD)
+                   f"(PU {_br(r.pu_compra)}); {vale.get(r.fonte_taxa, 'lote sem taxa')}", r.CD)
         if r.fonte_taxa == "manual":
             _aviso(avisos, "Correção manual", r.codigo, f"taxa {_br(r.taxa, 4)} ({correcoes[r.CD][1]})", r.CD)
     return abertos
@@ -858,8 +860,9 @@ def main(argv=None):
                          "fundo, e grava a aba Histórico")
     ap.add_argument("--frequencia", type=_chave, choices=("mensal", "diaria"),
                     help="datas da série: mensal (última data com posição de cada mês, padrão) ou diaria")
-    ap.add_argument("--fonte", choices=("boleta", "vcra"), default="boleta",
-                    help="taxa dos CDI+: boleta (negociada, padrão) ou vcra (pelo PU pago); %%CDI usa sempre a boleta")
+    ap.add_argument("--fonte", type=lambda s: "lake" if _chave(s) == "boleta" else _chave(s), choices=("lake", "vcra"),
+                    default="lake", help="taxa dos CDI+: lake (a boleta do Lake, negociada; padrão) ou vcra (pelo PU "
+                                         "pago); %%CDI usa sempre o Lake. Aceita também boleta, o nome antigo do lake")
     ap.add_argument("--cdi", type=float, help="CDI em %% a.a. para converter %%CDI em CDI+ equivalente "
                                                "(padrão: CDIAcumulado da FUNDOS_DADOS_INDICES na data de cada fundo)")
     ap.add_argument("--html", metavar="XLSX", help="só regera o relatório HTML de uma saída .xlsx já gravada, sem "
@@ -905,7 +908,7 @@ def main(argv=None):
     if not fundos:
         ap.error(f"nenhum fundo para rodar na aba Fundos de {args.entrada}")
     print(f"[INFO] {len(fundos)} fundo(s) | tipos incluídos: {', '.join(t for t, s in tipos.items() if s)} | "
-          f"taxa dos CDI+: {args.fonte}{f' | série {serie}' if serie else ''}")
+          f"taxa dos CDI+: {'Lake' if args.fonte == 'lake' else 'VCRA'}{f' | série {serie}' if serie else ''}")
 
     from sql_connection import disconnect, get_connection, query
     try:
@@ -1012,8 +1015,8 @@ def main(argv=None):
         ("Fundos", ", ".join(f for f, _ in fundos)),
         ("Data de referência", f"{args.data:%d/%m/%Y}" if args.data else "última data da posição de cada fundo"),
         ("Série (aba Histórico)", serie or "não: só a data de referência"),
-        ("Taxa dos CDI+", "boleta (negociada)" if args.fonte == "boleta" else "VCRA (pelo PU pago)"),
-        ("Taxa dos %CDI", "boleta (% do CDI)"),
+        ("Taxa dos CDI+", "Lake (boleta negociada)" if args.fonte == "lake" else "VCRA (pelo PU pago)"),
+        ("Taxa dos %CDI", "Lake (boleta, % do CDI)"),
         ("CDI para %CDI → CDI+", f"{_br(args.cdi, 4)}% a.a. (--cdi)" if args.cdi is not None
          else "CDIAcumulado na data de cada fundo (aba Fundos)"),
         ("Tipos incluídos", ", ".join(t for t, s in tipos.items() if s)),

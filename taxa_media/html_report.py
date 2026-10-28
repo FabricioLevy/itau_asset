@@ -141,7 +141,7 @@ def _chave(texto, cor):
     return f'<span class="tag t-serie"><i style="background:{cor}"></i>{_esc(texto)}</span>'
 
 
-_CLASSE_FONTE = {"boleta": "t-boleta", "VCRA": "t-vcra", "manual": "t-manual"}
+_CLASSE_FONTE = {"Lake": "t-lake", "VCRA": "t-vcra", "manual": "t-manual"}
 
 # formato de cada coluna das tabelas: valor (não vazio) e a linha inteira -> HTML da célula
 _FMT = {
@@ -860,7 +860,7 @@ def _preparar_fundo(t, info, cadastro=None):
         df = f[chave]
         if len(df):
             df["emissao"] = _emissao(df)
-            df["fonte_rot"] = df["fonte_taxa"].fillna("").replace("", "sem taxa")
+            df["fonte_rot"] = df["fonte_taxa"].fillna("").replace({"": "sem taxa", "boleta": "Lake"})
     if len(f["trades"]):
         f["trades"] = f["trades"].sort_values(["data", "operacao", "codigo", "CD"], ascending=[False, True, True, True])
     if len(f["por_dia"]):
@@ -1114,9 +1114,9 @@ def _aba_lotes(f):
     tid = f"tbl-{f['slug']}-lotes"
     divergentes = set(f["avisos"].loc[f["avisos"]["aviso"] == "Boleta × VCRA", "lote"]) if len(f["avisos"]) else set()
     cont = lt["fonte_rot"].value_counts()
-    dicas = {"boleta": "taxa negociada na boleta", "VCRA": "sem boleta válida (ou --fonte vcra): pelo PU pago",
+    dicas = {"Lake": "taxa negociada, da boleta do Lake", "VCRA": "sem boleta válida (ou --fonte vcra): pelo PU pago",
              "manual": "taxa da aba Correções", "sem taxa": "%CDI sem boleta válida: fora da média do ativo"}
-    cores = {"boleta": ITAU_GREEN, "VCRA": COR_GRUPO["CDI+"], "manual": ITAU_ORANGE, "sem taxa": ITAU_RED}
+    cores = {"Lake": ITAU_GREEN, "VCRA": COR_GRUPO["CDI+"], "manual": ITAU_ORANGE, "sem taxa": ITAU_RED}
     cartoes = [_kpi("Lotes em aberto", _br(len(lt), 0), f"em {_plural(lt['codigo'].nunique(), 'ativo')}")]
     for fonte, dica in dicas.items():
         if cont.get(fonte):
@@ -1156,7 +1156,7 @@ def _aba_lotes(f):
                ("pu_compra", "PU de compra", "pu", "PU da compra (média ponderada)"),
                ("data_boleta", "Boleta", "data", "Data da boleta casada"),
                ("casou_por", "Casou por", "texto", "A boleta casou pela quantidade ou pelo PU"),
-               ("taxa_boleta", "Taxa da boleta", "conv4", "exec_taxa da FUNDOS_OPERACOES"),
+               ("taxa_boleta", "Taxa da boleta", "conv4", "exec_taxa da boleta no Lake (FUNDOS_OPERACOES)"),
                ("boleta_ok", "Boleta válida", "simnao", "Na convenção do grupo (veja METODOLOGIA)"),
                ("taxa_vcra_conv", "Taxa VCRA", "conv4", "Taxa da VCRA (pelo PU pago) na convenção do grupo"),
                ("dif_boleta_vcra", "Boleta − VCRA", "dif", "Diferença na convenção do grupo"),
@@ -1271,13 +1271,13 @@ def _aba_trades(f):
                ("pu", "PU", "pu", "PU da operação"), ("financeiro", "Financeiro (R$)", "int", "Quantidade × PU"),
                ("data_boleta", "Boleta", "data", "Data da boleta casada"),
                ("casou_por", "Casou por", "texto", "Quantidade ou PU"),
-               ("taxa_boleta", "Taxa da boleta", "conv4", "exec_taxa da FUNDOS_OPERACOES"),
+               ("taxa_boleta", "Taxa da boleta", "conv4", "exec_taxa da boleta no Lake (FUNDOS_OPERACOES)"),
                ("taxa_vcra_conv", "Taxa VCRA", "conv4", "VL_JUROSOPER na convenção do grupo"),
                ("taxa", "Taxa usada", "conv4", "Pelas mesmas regras dos lotes"),
                ("fonte_rot", "Fonte", "fonte", "De onde veio a taxa usada"),
                ("taxa_cdi_mais", "CDI+ equivalente", "eq", "Taxa usada em CDI+ equivalente, com o CDI do dia")]
     ops = [o for o in ("Compra", "Venda") if o in set(tr["operacao"])]
-    fontes = [x for x in ("boleta", "VCRA", "manual", "sem taxa") if x in set(tr["fonte_rot"])]
+    fontes = [x for x in ("Lake", "VCRA", "manual", "sem taxa") if x in set(tr["fonte_rot"])]
     grupos = [g for g in COR_GRUPO if g in set(tr["grupo"])]
     filtros_dia = _filtros(tid_dia, [("op", "Operação", ops)], dica="Filtrar (data...)")
     tabela_dia = _tabela(dia, _COLUNAS_POR_DIA, tid_dia, attrs=[("dia", "data"), ("op", "operacao")],
@@ -1357,8 +1357,10 @@ GLOSSARIO = [
                          "diário)^252 / (1 + CDI) − 1. É o que permite juntar os dois grupos numa taxa só."),
     ("Lote", "cada compra na custódia (CD da VCRAOPRF). Quantidade em aberto = compras − vendas do lote. Lote com "
              "sufixo A é relançamento da VCRA."),
-    ("Taxa usada", "%CDI: a da boleta. CDI+: a da boleta ou a da VCRA (veja Taxa dos CDI+ nos parâmetros); sem boleta "
-                   "válida, a da VCRA. A aba Correções do Excel de entrada vale por cima de tudo."),
+    ("Lake", "o sistema das boletas (FUNDOS_OPERACOES), o que não é a VCRA: dele vem a taxa negociada."),
+    ("Taxa usada", "%CDI: a da boleta do Lake. CDI+: a do Lake ou a da VCRA (veja Taxa dos CDI+ nos parâmetros); sem "
+                   "boleta válida, a da VCRA. A aba Correções do Excel de entrada vale por cima de tudo. A coluna "
+                   "Fonte diz de onde veio: Lake, VCRA ou manual."),
     ("Boleta válida", "boleta casada com a taxa na convenção do grupo (limites nos parâmetros)."),
     ("Taxa VCRA", "a taxa da custódia pelo PU pago (VL_JUROSOPER), na convenção do grupo, para comparar com a boleta."),
     ("Taxa média do ativo", "média das taxas usadas nos lotes em aberto, ponderada pela quantidade."),
@@ -1534,7 +1536,7 @@ def _css():
     .tag i {{ display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }}
     .t-serie {{ background: #f1f3f8; color: {_TINTA}; }}
     .t-total {{ background: {ITAU_DARK}; color: #fff; }}
-    .t-boleta, .t-ok {{ background: #e3f3e8; color: #1e5e34; }}
+    .t-lake, .t-ok {{ background: #e3f3e8; color: #1e5e34; }}
     .t-vcra {{ background: #e5eefb; color: #1d4f91; }}
     .t-manual, .t-aviso {{ background: #fff0e0; color: #8a4200; }}
     .t-sem, .t-erro {{ background: #fdeceb; color: #a42a1e; }}
