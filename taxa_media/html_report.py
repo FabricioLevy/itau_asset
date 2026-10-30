@@ -30,9 +30,15 @@ ROW_PAR = "#eaf0fb"
 
 # Cores das séries, as mesmas em todo o relatório (a cor segue a entidade): carteira, CDI+ e %CDI usam o trio do
 # attribution (fundo, benchmark, Ibovespa); compras e vendas, um par próprio. Os dois trios (com a carteira)
-# passam no validador de daltonismo comparando todos os pares.
+# passam no validador de daltonismo comparando todos os pares. SELIC+, Pré e IPCA+ completam os cinco grupos: o
+# validador avisa só no par Pré × IPCA+ (ΔE 7,8 no deutan), por isso todo gráfico com grupo tem legenda ou rótulo.
 COR_CARTEIRA = ITAU_ORANGE
-COR_GRUPO = {"CDI+": "#2A78D6", "%CDI": "#4A3AA7"}
+COR_GRUPO = {"CDI+": "#2A78D6", "%CDI": "#4A3AA7", "SELIC+": "#eda100", "Pré": "#c2185b", "IPCA+": "#0e9f6e"}
+# grupo -> sufixo das colunas por grupo (taxa_<sufixo>, fin_<sufixo>) e a unidade da taxa
+SUFIXO_GRUPO = {"%CDI": "pct", "CDI+": "mais", "SELIC+": "selic", "Pré": "pre", "IPCA+": "ipca"}
+UNIDADE_GRUPO = {"CDI+": "spread, % a.a.", "%CDI": "% do CDI", "SELIC+": "spread sobre a SELIC, % a.a.",
+                 "Pré": "taxa, % a.a.", "IPCA+": "spread sobre o IPCA, % a.a."}
+INFORMATIVOS = {"Correção manual", "FIDC pelo cadastro"}  # avisos que só informam
 COR_OPERACAO = {"Compra": "#00A37A", "Venda": "#B0306A"}
 COR_PESO = "#9AA5B8"     # peso no financeiro: neutro, não é série
 COR_DESTAQUE = "#D03B3B"  # lote com aviso Boleta × VCRA
@@ -48,17 +54,21 @@ _DIR = os.path.dirname(os.path.abspath(__file__))
 # Logo compartilhado com exposicao_html, como no attribution (se não existir, a página fica sem logo).
 _LOGO_PATH = os.path.join(_DIR, "..", "..", "exposicao_html", "input", "logo.png")
 
-# O que cada aviso do __main__ quer dizer (aba AVISOS); "Correção manual" é informativo.
+# O que cada aviso do __main__ quer dizer (aba AVISOS); os de INFORMATIVOS só informam.
 SIGNIFICADO_AVISOS = {
     "Quantidade": "a quantidade dos lotes em aberto na VCRA não bate com a da posição na data",
     "Sem lote": "o ativo está na posição sem lote em aberto na VCRA: fica fora da média",
-    "Fora do escopo": "o ativo está na posição, mas o tipo (RFTP_CD) ou o indexador está fora do cálculo",
+    "Fora do escopo": "o ativo está na posição, mas o tipo (RFTP_CD) ou o indexador (IGP-M, dólar...) está fora do "
+                      "cálculo",
     "Tipo novo": "RFTP_CD da VCRA que não está na aba Tipos do Excel de entrada: ficou fora",
     "Fora da média": "ativo sem nenhum lote com taxa ou sem PU na posição: não entra na média",
     "Média parcial": "parte dos lotes do ativo está sem taxa: a média do ativo usa só os outros",
+    "FIDC sem taxa": "cota de FIDC sem boleta válida no Lake e sem taxa no cadastro: fica fora da média",
+    "FIDC sem indexador": "cota de FIDC sem indexador no FUNDOS_CADASTRO_ATIVOS: sem grupo, fica fora da média",
     "Boleta inválida": "a taxa da boleta está fora da convenção do grupo (ex.: 9,33 num papel de % do CDI)",
     "Sem boleta": "nenhuma boleta casou com a compra (mesmo ativo, perto da data, mesma quantidade ou PU)",
     "Correção manual": "taxa do lote trocada pela aba Correções do Excel de entrada",
+    "FIDC pelo cadastro": "cota de FIDC sem boleta válida no Lake: vale a taxa de emissão do cadastro",
     "Correção não aplicada": "lote da aba Correções que não está em aberto no fundo",
     "Boleta × VCRA": "a taxa da boleta e a da VCRA (pelo PU pago) divergem acima do limite",
     "Venda sem compra": "venda de um lote cuja compra não está no histórico da VCRA",
@@ -92,10 +102,24 @@ def _cdi_mais(x, casas=2):
 
 
 def _taxa(grupo, v, casas=2):
-    """Taxa na convenção do grupo: CDI+2,46 ou 105,51% do CDI."""
+    """Taxa na convenção do grupo: CDI+2,46, 105,51% do CDI, SELIC+0,05, 13,20% a.a. ou IPCA+7,10; sem grupo (cota
+    de FIDC sem indexador), só o número."""
     if _vazio(v):
         return ""
-    return f"{_br(v, casas)}% do CDI" if grupo == "%CDI" else _cdi_mais(v, casas)
+    if _vazio(grupo):
+        return _br(v, casas)
+    if grupo == "%CDI":
+        return f"{_br(v, casas)}% do CDI"
+    if grupo == "Pré":
+        return f"{_br(v, casas)}% a.a."
+    if grupo in ("SELIC+", "IPCA+"):
+        return f"{grupo[:-1]}{'+' if v >= 0 else '−'}{_br(abs(v), casas)}"
+    return _cdi_mais(v, casas)
+
+
+def _col(df, coluna):
+    """Coluna da tabela ou, se faltar (Excel de uma versão anterior), uma coluna vazia."""
+    return df[coluna] if coluna in df.columns else pd.Series(np.nan, index=df.index)
 
 
 def _rs(v):
@@ -141,7 +165,7 @@ def _chave(texto, cor):
     return f'<span class="tag t-serie"><i style="background:{cor}"></i>{_esc(texto)}</span>'
 
 
-_CLASSE_FONTE = {"Lake": "t-lake", "VCRA": "t-vcra", "manual": "t-manual"}
+_CLASSE_FONTE = {"Lake": "t-lake", "VCRA": "t-vcra", "cadastro": "t-cadastro", "manual": "t-manual"}
 
 # formato de cada coluna das tabelas: valor (não vazio) e a linha inteira -> HTML da célula
 _FMT = {
@@ -155,6 +179,9 @@ _FMT = {
     "dif": lambda v, r: ("+" if v > 0 else "") + _br(v, 2),
     "pct": lambda v, r: _br(v, 2) + "%",
     "eq": lambda v, r: _cdi_mais(v),
+    "selic": lambda v, r: _taxa("SELIC+", v),
+    "pre": lambda v, r: _taxa("Pré", v),
+    "ipca": lambda v, r: _taxa("IPCA+", v),
     "conv": lambda v, r: _taxa(r.get("grupo"), v),
     "conv4": lambda v, r: _taxa(r.get("grupo"), v, 4),
     "ativo": lambda v, r: f'<a class="lk-ativo" data-ativo="{_esc(v)}">{_esc(v)}</a>',
@@ -163,7 +190,7 @@ _FMT = {
     "op": lambda v, r: _chave(v, COR_OPERACAO.get(v, _BASE)),
     "fonte": lambda v, r: _tag(v, _CLASSE_FONTE.get(v, "t-sem")),
     "simnao": lambda v, r: _tag("sim", "t-ok") if v in (True, "sim") else _tag("não", "t-sem"),
-    "aviso": lambda v, r: _tag(v, "t-info" if v == "Correção manual" else "t-aviso"),
+    "aviso": lambda v, r: _tag(v, "t-info" if v in INFORMATIVOS else "t-aviso"),
     "status": lambda v, r: _tag(v, "t-ok" if v == "OK" else "t-erro" if str(v).startswith("erro") else "t-aviso"),
 }
 _FMT_TEXTO = {"texto", "ativo", "fundo", "grupo", "op", "fonte", "simnao", "aviso", "status"}
@@ -253,6 +280,11 @@ def _dominio_eixo(lo, hi, n_alvo=5):
     """(y_lo, y_hi, ticks, passo): ticks redondos, mas cada limite só vai até o próximo tick quando isso desperdiça no
     máximo meio passo; senão fica rente ao dado, com 4% de folga."""
     ticks, passo = _ticks_redondos(lo, hi, n_alvo)
+    if hi - lo <= passo * 1e-9:  # série constante (um lote só, taxa parada): o valor entre os dois ticks vizinhos
+        y_lo, y_hi = math.floor(lo / passo + 1e-9) * passo, math.ceil(hi / passo - 1e-9) * passo
+        if y_hi - y_lo < passo / 2:  # o valor caiu num tick: um passo de cada lado
+            y_lo, y_hi = y_lo - passo, y_hi + passo
+        return y_lo, y_hi, [y_lo + k * passo for k in range(int(round((y_hi - y_lo) / passo)) + 1)], passo
     folga = 0.04 * ((hi - lo) or passo)
     y_lo = ticks[0] if lo - ticks[0] <= passo / 2 else lo - folga
     y_hi = ticks[-1] if ticks[-1] - hi <= passo / 2 else hi + folga
@@ -692,6 +724,17 @@ def _dispersao(pontos, titulo_x, titulo_y):
             f'style="width:100%;max-width:560px;display:block;overflow:visible">' + "".join(els + alvos) + "</svg>")
 
 
+def _tinta_sobre(cor):
+    """Cor do texto sobre um fundo #rrggbb: branco ou a tinta, a que tiver mais contraste (WCAG)."""
+    def lum(hexa):
+        canais = [int(hexa[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in canais]
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    fundo = lum(cor)
+    branco, tinta = 1.05 / (fundo + 0.05), (fundo + 0.05) / (lum(_TINTA) + 0.05)
+    return "#fff" if branco >= tinta else _TINTA
+
+
 def _barra_composicao(partes):
     """Barra 100% (parte do todo), com o rótulo dentro do segmento só quando cabe. partes: [(nome, valor, cor)]."""
     partes = [(nome, v, cor) for nome, v, cor in partes if not _vazio(v) and v > 0]
@@ -702,7 +745,7 @@ def _barra_composicao(partes):
     for nome, v, cor in partes:
         pct = v / total * 100
         rotulo = f"{nome} {_br(pct, 1)}%" if pct >= 14 else ""
-        segs.append(f'<div class="comp-seg" style="flex:{pct:.4f};background:{cor}" '
+        segs.append(f'<div class="comp-seg" style="flex:{pct:.4f};background:{cor};color:{_tinta_sobre(cor)}" '
                     f'data-tip="{_esc(f"{nome}{chr(10)}{_br(pct, 1)}% do financeiro{chr(10)}{_rs(v)}")}">'
                     f'{_esc(rotulo)}</div>')
         itens.append(f'<span class="hist-leg"><i class="hist-key-barra" style="background:{cor}"></i>'
@@ -780,7 +823,12 @@ def _valor_cadastro(campo, v, campos, data_ref):
             indexador = str(campos.get("indexador", ("",))[0] or "").upper().replace(" ", "")
             if indexador.startswith("CDI+"):
                 return _cdi_mais(float(v))
-            return f"{_br(v)}% do CDI" if "%" in indexador or indexador in ("CDI", "DI") else _br(v)
+            if "%" in indexador or indexador in ("CDI", "DI"):
+                return f"{_br(v)}% do CDI"
+            for prefixo, grupo in (("SELIC", "SELIC+"), ("IPCA", "IPCA+"), ("PRE", "Pré"), ("PRÉ", "Pré")):
+                if indexador.startswith(prefixo):
+                    return _taxa(grupo, float(v))
+            return _br(v)
         return _br(v, 0) if float(v).is_integer() else f"{float(v):.6g}".replace(".", ",")
     if campo == "issuer_cnpj":
         digitos = re.sub(r"\D", "", str(v))
@@ -825,8 +873,18 @@ def _do_fundo(df, fundo):
 
 
 def _emissao(df):
-    """Taxa de emissão na convenção do grupo: o spread no CDI+ e o % do CDI no %CDI."""
-    return np.where(df["grupo"] == "CDI+", df["taxa_emissao"], df["perc_cdi"])
+    """Taxa de emissão na convenção do grupo: o % do CDI (IDDIR_PC) no %CDI; nos outros, a taxa ou o spread de
+    emissão. Zero no Pré e no IPCA+ é título sem taxa de emissão na VCRA (LTN): fica vazio."""
+    sem = df["grupo"].isin(["Pré", "IPCA+"]) & (df["taxa_emissao"] == 0)
+    return np.where(df["grupo"] == "%CDI", df["perc_cdi"], df["taxa_emissao"].where(~sem))
+
+
+def _ordem_grupos(df, *outras):
+    """Ordena pelo grupo (na ordem das tabelas do Excel, a de SUFIXO_GRUPO; sem grupo no fim) e pelas outras
+    colunas."""
+    ordem = {g: i for i, g in enumerate(SUFIXO_GRUPO)}
+    return df.sort_values(["grupo", *outras], key=lambda s: s.map(ordem) if s.name == "grupo" else s,
+                          na_position="last")
 
 
 def _preparar_fundo(t, info, cadastro=None):
@@ -846,7 +904,8 @@ def _preparar_fundo(t, info, cadastro=None):
     a = f["ativos"]
     if len(a):
         a["emissao"] = _emissao(a)
-        ok = a["financeiro"].notna() & a["taxa_media"].notna()  # os que entram na média (consolidar no __main__)
+        # os que entram na carteira (consolidar no __main__): com financeiro e CDI+ equivalente (IPCA+ só com --ipca)
+        ok = a["financeiro"].notna() & a["taxa_media"].notna() & a["taxa_cdi_mais"].notna()
         total = a.loc[ok, "financeiro"].sum()
         a["peso"] = (a["financeiro"] / total * 100).where(ok) if total else np.nan
         a["contrib"] = a["peso"] / 100 * a["taxa_cdi_mais"]
@@ -855,7 +914,7 @@ def _preparar_fundo(t, info, cadastro=None):
         for coluna, campo in (("nome_ativo", "security_name"), ("grupo_eco", "grupo_economico_ce"),
                               ("rating", "rating_itau")):
             a[coluna] = [x.get(campo, (None,))[0] for x in cad]
-        f["ativos"] = a.sort_values(["grupo", "codigo"], na_position="last").reset_index(drop=True)
+        f["ativos"] = _ordem_grupos(a, "codigo").reset_index(drop=True)
     for chave in ("lotes", "trades"):
         df = f[chave]
         if len(df):
@@ -883,6 +942,27 @@ def _vals(serie, validos=None):
     return [None if _vazio(v) or not ok else float(v) for v, ok in zip(serie, validos)]
 
 
+# rótulo da taxa, formato e descrição de cada grupo nas tabelas por data (Histórico e Trades por dia)
+_COL_GRUPO = {"%CDI": ("taxa", "pct", "Taxa média dos %CDI, em % do CDI"),
+              "CDI+": ("spread", "eq", "Spread médio dos CDI+"),
+              "SELIC+": ("spread", "selic", "Spread médio sobre a SELIC (LFT)"),
+              "Pré": ("taxa", "pre", "Taxa média dos prefixados, em % a.a."),
+              "IPCA+": ("spread", "ipca", "Spread médio sobre o IPCA")}
+
+
+def _colunas_grupos(df=None, com_taxa=""):
+    """Colunas taxa_<sufixo> e fin_<sufixo> de cada grupo: %CDI e CDI+ sempre; os outros só se df tiver valor neles
+    (df None = todos)."""
+    colunas = []
+    for grupo, s in SUFIXO_GRUPO.items():
+        if df is not None and grupo not in ("%CDI", "CDI+") and not _col(df, f"fin_{s}").notna().any():
+            continue
+        rotulo, fmt, dica = _COL_GRUPO[grupo]
+        colunas += [(f"taxa_{s}", f"{grupo}: {rotulo}", fmt, dica),
+                    (f"fin_{s}", f"{grupo}: financeiro (R$)", "int", f"Financeiro dos {grupo}{com_taxa}")]
+    return colunas
+
+
 # ── Abas de cada fundo ────────────────────────────────────────────────────────
 def _aba_resumo(f):
     c = f["carteira"].set_index("grupo") if len(f["carteira"]) else pd.DataFrame(columns=["financeiro"])
@@ -896,13 +976,16 @@ def _aba_resumo(f):
     cdi = f" · CDI de {_br(f['cdi'])}% a.a." if f["cdi"] else ""
     info, av = f["info"], f["avisos"]
     tipos = av["aviso"].value_counts(sort=False) if len(av) else pd.Series(dtype=int)
-    cartoes = [
-        _kpi("Taxa média da carteira", _cdi_mais(taxa) or "sem taxa", f"em CDI+ equivalente{cdi}", COR_CARTEIRA,
-             grafico=spark),
-        _kpi("%CDI", _taxa("%CDI", g("%CDI", "taxa_media")) or "—",
-             f"{_rs(g('%CDI', 'financeiro'))} · {_plural(_int(g('%CDI', 'n_ativos')), 'ativo')}", COR_GRUPO["%CDI"]),
-        _kpi("CDI+", _taxa("CDI+", g("CDI+", "taxa_media")) or "—",
-             f"{_rs(g('CDI+', 'financeiro'))} · {_plural(_int(g('CDI+', 'n_ativos')), 'ativo')}", COR_GRUPO["CDI+"]),
+    # %CDI e CDI+ sempre (com — se faltarem); SELIC+, Pré e IPCA+ só quando o fundo tem
+    grupos = [x for x in SUFIXO_GRUPO if x in ("%CDI", "CDI+") or x in c.index]
+    fora = [x for x in grupos if x in c.index and _vazio(g(x, "taxa_cdi_mais"))]  # IPCA+ sem o --ipca
+    cartoes = [_kpi("Taxa média da carteira", _cdi_mais(taxa) or "sem taxa", f"em CDI+ equivalente{cdi}", COR_CARTEIRA,
+                    grafico=spark)]
+    for x in grupos:
+        cartoes.append(_kpi(x, _taxa(x, g(x, "taxa_media")) or "—",
+                            f"{_rs(g(x, 'financeiro'))} · {_plural(_int(g(x, 'n_ativos')), 'ativo')}"
+                            + (" · fora da carteira (sem --ipca)" if x in fora else ""), COR_GRUPO[x]))
+    cartoes += [
         _kpi("Financeiro na média", _rs(fin), f"{_plural(_int(info.get('n_ativos')), 'ativo')} · "
              f"{_plural(_int(info.get('n_lotes')), 'lote')} em aberto"),
         _kpi("Avisos", _br(len(av), 0), " · ".join(f"{t} {n}" for t, n in list(tipos.items())[:3]) or "nenhum",
@@ -910,10 +993,14 @@ def _aba_resumo(f):
     ]
     html = f'<div class="kpis">{"".join(cartoes)}</div>'
 
-    comp = _barra_composicao([("CDI+", g("CDI+", "financeiro"), COR_GRUPO["CDI+"]),
-                              ("%CDI", g("%CDI", "financeiro"), COR_GRUPO["%CDI"])])
+    comp = _barra_composicao([(x, g(x, "financeiro"), COR_GRUPO[x]) for x in COR_GRUPO if x not in fora])
     if comp:
-        html += _secao("Composição do financeiro na média", comp)
+        nota = ""
+        if fora:
+            fora_txt = ", ".join(f"{x} ({_rs(g(x, 'financeiro'))})" for x in fora)
+            nota = _esc(f"Fora da carteira: {fora_txt}, que só entra no CDI+ equivalente com o IPCA projetado "
+                        f"(--ipca).")
+        html += _secao("Composição do financeiro na média", comp, nota)
 
     a = f["ativos"]
     a = a[a["contrib"].notna()] if len(a) else a
@@ -942,15 +1029,17 @@ def _aba_resumo(f):
 
     if len(f["carteira"]):
         cart = f["carteira"].copy()
-        cart["peso"] = cart["financeiro"] / fin * 100 if fin else np.nan
+        cart["peso"] = (cart["financeiro"] / fin * 100).where(cart["taxa_cdi_mais"].notna()) if fin else np.nan
         linhas = cart[cart["grupo"] != "CARTEIRA"]
         total = cart[cart["grupo"] == "CARTEIRA"].assign(grupo="Carteira").to_dict("records")
         colunas = [("grupo", "Grupo", "grupo", "Grupo dos ativos"), ("n_ativos", "Ativos", "int", "Ativos com taxa e PU"),
                    ("financeiro", "Financeiro (R$)", "int", "Quantidade em aberto × último PU da posição"),
-                   ("peso", "Peso", "pct", "Parte do financeiro na média"),
+                   ("peso", "Peso", "pct", "Parte do financeiro na média (vazio: fora da carteira)"),
                    ("taxa_media", "Taxa média", "conv", "Média ponderada pelo financeiro, na convenção do grupo"),
                    ("taxa_cdi_mais", "Em CDI+ equivalente", "eq", "Média em CDI+ equivalente (junta os grupos)")]
-        html += f'<h2 class="aba-title">Carteira por grupo</h2>{_tabela(linhas, colunas, rodape=total)}'
+        explica = ('<p class="explica">IPCA+ sem CDI+ equivalente: fica fora da carteira; rode com --ipca (o IPCA '
+                   'projetado, em % a.a.) para incluí-lo.</p>' if fora else "")
+        html += f'<h2 class="aba-title">Carteira por grupo</h2>{explica}{_tabela(linhas, colunas, rodape=total)}'
 
     tr = f["trades"]
     if len(tr):
@@ -973,23 +1062,30 @@ def _aba_historico(f, abre_dia=False):
     h = f["historico"]
     if h.empty:
         return '<p class="aviso">Sem série para este fundo.</p>'
-    ok = list(h["status"] == "OK")
+    # "ok" na série: a data tem resultado (a carteira pode faltar só porque o fundo tem só IPCA+ sem o --ipca)
+    ok = list(h["status"].eq("OK") | h["status"].astype(str).str.startswith("sem taxa da carteira"))
     datas = list(h["data"])
+
+    def linha(grupo, nome, sid):
+        return {"sid": sid, "nome": nome, "vals": _vals(_col(h, f"taxa_{SUFIXO_GRUPO[grupo]}"), ok),
+                "cor": COR_GRUPO[grupo], "tipo": "linha"}
+
     paineis = [
         {"titulo": "Taxa em CDI+ equivalente (spread, % a.a.)", "altura": 250, "robusto": True, "fmt": _cdi_mais,
          "series": [{"sid": "carteira", "nome": "Carteira (CDI+ equivalente)", "vals": _vals(h["taxa_carteira"], ok),
                      "cor": COR_CARTEIRA, "tipo": "linha", "principal": True},
-                    {"sid": "cdimais", "nome": "CDI+ (spread médio)", "vals": _vals(h["taxa_mais"], ok),
-                     "cor": COR_GRUPO["CDI+"], "tipo": "linha"}]},
+                    linha("CDI+", "CDI+ (spread médio)", "cdimais"),
+                    linha("SELIC+", "SELIC+ (spread médio; SELIC = CDI)", "selic")]},
         {"titulo": "%CDI: taxa média (% do CDI)", "altura": 140, "robusto": True, "sufixo": "%",
-         "fmt": lambda v: f"{_br(v)}% do CDI",
-         "series": [{"sid": "pct", "nome": "%CDI (taxa média)", "vals": _vals(h["taxa_pct"], ok),
-                     "cor": COR_GRUPO["%CDI"], "tipo": "linha"}]},
-        {"titulo": "Financeiro na média (R$ mi)", "altura": 120, "fmt": _rs, "escala": 1e6, "series": [
-            {"sid": "fin-mais", "nome": "Financeiro CDI+", "vals": _vals(h["fin_mais"], ok), "cor": COR_GRUPO["CDI+"],
-             "tipo": "barras"},
-            {"sid": "fin-pct", "nome": "Financeiro %CDI", "vals": _vals(h["fin_pct"], ok), "cor": COR_GRUPO["%CDI"],
-             "tipo": "barras"}]},
+         "fmt": lambda v: f"{_br(v)}% do CDI", "series": [linha("%CDI", "%CDI (taxa média)", "pct")]},
+        {"titulo": "Pré: taxa média (% a.a.)", "altura": 140, "robusto": True, "sufixo": "%",
+         "fmt": lambda v: f"{_br(v)}% a.a.", "series": [linha("Pré", "Pré (taxa média)", "pre")]},
+        {"titulo": "IPCA+: spread médio sobre o IPCA (% a.a.)", "altura": 140, "robusto": True,
+         "fmt": lambda v: _taxa("IPCA+", v), "series": [linha("IPCA+", "IPCA+ (spread médio)", "ipca")]},
+        {"titulo": "Financeiro por grupo (R$ mi)", "altura": 120, "fmt": _rs, "escala": 1e6, "series": [
+            {"sid": f"fin-{s}", "nome": f"Financeiro {grupo}", "vals": _vals(_col(h, f"fin_{s}"), ok),
+             "cor": COR_GRUPO[grupo], "tipo": "barras"}
+            for grupo, s in sorted(SUFIXO_GRUPO.items(), key=lambda x: list(COR_GRUPO).index(x[0]))]},
     ]
     for p in paineis:
         p["series"] = [s for s in p["series"] if any(v is not None for v in s["vals"])]
@@ -1023,12 +1119,9 @@ def _aba_historico(f, abre_dia=False):
     colunas = [("data", "Data", "data", "Data da carteira"), ("status", "Status", "status", "OK ou o motivo da falha"),
                ("taxa_carteira", "Carteira", "eq", "Taxa da carteira em CDI+ equivalente"),
                ("financeiro", "Financeiro (R$)", "int", "Financeiro dos ativos na média"),
-               ("taxa_pct", "%CDI: taxa", "pct", "Taxa média dos %CDI, em % do CDI"),
-               ("fin_pct", "%CDI: financeiro (R$)", "int", "Financeiro dos %CDI"),
-               ("taxa_mais", "CDI+: spread", "eq", "Spread médio dos CDI+"),
-               ("fin_mais", "CDI+: financeiro (R$)", "int", "Financeiro dos CDI+"),
+               *_colunas_grupos(h),
                ("n_ativos", "Ativos", "int", "Ativos com lote em aberto"), ("n_lotes", "Lotes", "int", "Lotes em aberto"),
-               ("cdi", "CDI (% a.a.)", "t2", "CDI usado para converter %CDI em CDI+ equivalente"),
+               ("cdi", "CDI (% a.a.)", "t2", "CDI usado para levar %CDI e pré ao CDI+ equivalente"),
                ("n_avisos", "Avisos", "int", "Avisos na data"),
                ("avisos", "Avisos por tipo", "longo", "Quantos de cada tipo")]
     tid = f"tbl-{f['slug']}-historico"
@@ -1038,10 +1131,14 @@ def _aba_historico(f, abre_dia=False):
             f'{_filtros(tid, dica="Filtrar (data, status, aviso...)")}{tabela}')
 
 
-def _fora_da_media(r):
+def _fora_da_media(r, fora_escopo=()):
     if _vazio(r["qt_lotes"]):
-        return "sem lote na VCRA"
-    return "sem taxa" if _vazio(r["taxa_media"]) else "sem PU" if _vazio(r["pu"]) else ""
+        return "fora do escopo" if r["codigo"] in fora_escopo else "sem lote na VCRA"
+    if _vazio(r["taxa_media"]):
+        return "sem taxa" if not _vazio(r.get("grupo")) else "sem grupo"
+    if _vazio(r["pu"]):
+        return "sem PU"
+    return "IPCA+ sem --ipca" if _vazio(r["taxa_cdi_mais"]) else ""
 
 
 def _aba_ativos(f):
@@ -1052,7 +1149,7 @@ def _aba_ativos(f):
     na_media = a[a["peso"].notna() & a["taxa_cdi_mais"].notna()].sort_values("taxa_cdi_mais", ascending=False)
     linhas = []
     for r in na_media.itertuples():
-        proprio = f" ({_br(r.taxa_media)}% do CDI)" if r.grupo == "%CDI" else ""
+        proprio = f" ({_taxa(r.grupo, r.taxa_media)})" if r.grupo in ("%CDI", "Pré", "IPCA+") else ""
         nome = "" if _vazio(r.nome_ativo) else f"\n{r.nome_ativo}"
         linhas.append({
             "rotulo": r.codigo, "valor": r.taxa_cdi_mais, "texto": _cdi_mais(r.taxa_cdi_mais) + proprio,
@@ -1060,30 +1157,34 @@ def _aba_ativos(f):
             "tip": f"{r.codigo} · {r.grupo}{nome}\nTaxa média: {_taxa(r.grupo, r.taxa_media)}\nCDI+ equivalente: "
                    f"{_cdi_mais(r.taxa_cdi_mais)}\nFinanceiro: {_rs(r.financeiro)} · peso {_br(r.peso, 2)}%\n"
                    f"Contribuição: {_br(r.contrib, 4)} p.p.\nClique para abrir a ficha"})
-    fora = [f"{r['codigo']} ({_fora_da_media(r)})" for r in a.to_dict("records") if _fora_da_media(r)]
+    av = f["avisos"]
+    escopo = set(av.loc[av["aviso"] == "Fora do escopo", "ativo"]) if len(av) else set()
+    fora = [f"{r['codigo']} ({_fora_da_media(r, escopo)})" for r in a.to_dict("records") if _fora_da_media(r, escopo)]
     legenda = "".join(f'<span class="hist-leg"><i class="hist-key-barra" style="background:{cor}"></i>{g}</span>'
                       for g, cor in COR_GRUPO.items() if g in set(na_media["grupo"]))
     legenda += f'<span class="hist-leg"><i class="hist-key" style="background:{COR_CARTEIRA}"></i>Carteira</span>'
     grafico = (f'<div class="hist-legenda">{legenda}</div>' + _barras_h(
         linhas, "Taxa em CDI+ equivalente", None if _vazio(taxa) else (taxa, f"Carteira {_cdi_mais(taxa)}"),
         "Peso no financeiro")) if linhas else '<p class="aviso">Nenhum ativo com taxa e PU.</p>'
-    explica = ("Barras ordenadas pela taxa em CDI+ equivalente (os %CDI convertidos com o CDI da data, com o % do CDI "
-               "entre parênteses); a linha laranja é a taxa da carteira. À direita, o peso de cada ativo no "
-               "financeiro da média. Clique num ativo para abrir a ficha com os lotes, os trades e os avisos.")
+    explica = ("Barras ordenadas pela taxa em CDI+ equivalente (%CDI e pré convertidos com o CDI da data e IPCA+ com o "
+               "IPCA do --ipca, com a taxa original entre parênteses; SELIC+ conta como CDI+); a linha laranja é a "
+               "taxa da carteira. À direita, o peso de cada ativo no financeiro da média. Clique num ativo para abrir "
+               "a ficha com os lotes, os trades e os avisos.")
     if fora:
         explica += f" <b>Fora da média:</b> {_esc(', '.join(fora))}."
     html = _secao("Taxa e peso de cada ativo", grafico, explica)
 
     colunas = [("codigo", "Ativo", "ativo", "Clique para abrir a ficha do ativo"),
-               ("grupo", "Grupo", "grupo", "CDI+ (tem spread de emissão) ou %CDI"),
-               ("tipo", "Tipo", "texto", "RFTP_CD da VCRAOPRF"),
+               ("grupo", "Grupo", "grupo", "Pelo indexador: CDI+ (CDI com spread de emissão), %CDI, SELIC+, Pré ou "
+                                           "IPCA+"),
+               ("tipo", "Tipo", "texto", "RFTP_CD da VCRAOPRF; FIDC = cota de FIDC (da posição, não está na VCRA)"),
                ("grupo_eco", "Grupo econômico", "texto", "Grupo econômico de risco (FUNDOS_CADASTRO_ATIVOS)"),
                ("rating", "Rating", "texto", "Rating Itaú (FUNDOS_CADASTRO_ATIVOS)"),
-               ("emissao", "Emissão", "conv", "Taxa de emissão: spread (CDI+) ou % do CDI"),
-               ("n_lotes", "Lotes", "int", "Lotes em aberto na VCRA"),
+               ("emissao", "Emissão", "conv", "Taxa de emissão na convenção do grupo"),
+               ("n_lotes", "Lotes", "int", "Lotes em aberto na VCRA (cota de FIDC: 1)"),
                ("n_sem_boleta", "Sem boleta válida", "int", "Lotes sem boleta válida"),
                ("n_manual", "Corrigidos", "int", "Lotes com a taxa da aba Correções"),
-               ("qt_lotes", "Qtd lotes", "int", "Quantidade em aberto nos lotes da VCRA"),
+               ("qt_lotes", "Qtd lotes", "int", "Quantidade em aberto nos lotes da VCRA (cota de FIDC: a da posição)"),
                ("qt_posicao", "Qtd posição", "int", "Quantidade na VW_FUNDOS_POSICAO na data"),
                ("dif_qt", "Diferença", "int", "Lotes − posição (diferente de zero vira aviso)"),
                ("taxa_vcra", "Taxa VCRA", "conv", "Média da taxa da VCRA (pelo PU pago), na convenção do grupo"),
@@ -1115,9 +1216,14 @@ def _aba_lotes(f):
     divergentes = set(f["avisos"].loc[f["avisos"]["aviso"] == "Boleta × VCRA", "lote"]) if len(f["avisos"]) else set()
     cont = lt["fonte_rot"].value_counts()
     dicas = {"Lake": "taxa negociada, da boleta do Lake", "VCRA": "sem boleta válida (ou --fonte vcra): pelo PU pago",
-             "manual": "taxa da aba Correções", "sem taxa": "%CDI sem boleta válida: fora da média do ativo"}
-    cores = {"Lake": ITAU_GREEN, "VCRA": COR_GRUPO["CDI+"], "manual": ITAU_ORANGE, "sem taxa": ITAU_RED}
-    cartoes = [_kpi("Lotes em aberto", _br(len(lt), 0), f"em {_plural(lt['codigo'].nunique(), 'ativo')}")]
+             "cadastro": "cota de FIDC sem boleta do Lake: taxa de emissão do cadastro",
+             "manual": "taxa da aba Correções",
+             "sem taxa": "%CDI sem boleta válida ou FIDC sem taxa: fora da média do ativo"}
+    cores = {"Lake": ITAU_GREEN, "VCRA": COR_GRUPO["CDI+"], "cadastro": "#4a2f86", "manual": ITAU_ORANGE,
+             "sem taxa": ITAU_RED}
+    fidc = int((_col(lt, "tipo") == "FIDC").sum())
+    cartoes = [_kpi("Lotes em aberto", _br(len(lt), 0), f"em {_plural(lt['codigo'].nunique(), 'ativo')}"
+                    + (f", {_plural(fidc, 'cota')} de FIDC" if fidc else ""))]
     for fonte, dica in dicas.items():
         if cont.get(fonte):
             cartoes.append(_kpi(f"Taxa: {fonte}", _br(cont[fonte], 0), dica, cores[fonte],
@@ -1126,7 +1232,8 @@ def _aba_lotes(f):
     html = f'<div class="kpis">{"".join(cartoes)}</div>'
 
     paineis = []
-    for grupo, unidade in (("CDI+", "spread, % a.a."), ("%CDI", "% do CDI")):
+    for grupo in COR_GRUPO:
+        unidade = UNIDADE_GRUPO[grupo]
         g = lt[(lt["grupo"] == grupo) & (lt["boleta_ok"].isin([True, "sim"])) & lt["taxa_boleta"].notna()
                & lt["taxa_vcra_conv"].notna()]
         pontos = [{"x": r.taxa_vcra_conv, "y": r.taxa_boleta, "cor": COR_GRUPO[grupo], "destaque": r.CD in divergentes,
@@ -1148,21 +1255,23 @@ def _aba_lotes(f):
                  'boleta que repete a taxa de emissão, PU fora do mercado ou erro de digitação: confira na ficha.</p>')
 
     colunas = [("codigo", "Ativo", "ativo", "Clique para abrir a ficha do ativo"),
-               ("CD", "Lote", "texto", "CD da VCRAOPRF (sufixo A = relançamento)"),
-               ("grupo", "Grupo", "grupo", "CDI+ ou %CDI"), ("dt_compra", "Compra", "data", "Data da compra do lote"),
+               ("CD", "Lote", "texto", "CD da VCRAOPRF (sufixo A = relançamento); na cota de FIDC, o código da cota"),
+               ("grupo", "Grupo", "grupo", "CDI+, %CDI, SELIC+, Pré ou IPCA+"),
+               ("dt_compra", "Compra", "data", "Data da compra do lote (cota de FIDC: a 1ª boleta de compra)"),
                ("qt_comprada", "Qtd comprada", "int", "Soma das compras do lote"),
                ("qt_vendida", "Qtd vendida", "int", "Soma das vendas do lote"),
-               ("qt_aberta", "Qtd em aberto", "int", "Comprada − vendida"),
+               ("qt_aberta", "Qtd em aberto", "int", "Comprada − vendida (cota de FIDC: a quantidade da posição)"),
                ("pu_compra", "PU de compra", "pu", "PU da compra (média ponderada)"),
-               ("data_boleta", "Boleta", "data", "Data da boleta casada"),
-               ("casou_por", "Casou por", "texto", "A boleta casou pela quantidade ou pelo PU"),
+               ("data_boleta", "Boleta", "data", "Data da boleta casada (cota de FIDC: a última)"),
+               ("casou_por", "Casou por", "texto", "A boleta casou pela quantidade ou pelo PU; na cota de FIDC, a "
+                                                  "média das boletas de compra"),
                ("taxa_boleta", "Taxa da boleta", "conv4", "exec_taxa da boleta no Lake (FUNDOS_OPERACOES)"),
                ("boleta_ok", "Boleta válida", "simnao", "Na convenção do grupo (veja METODOLOGIA)"),
                ("taxa_vcra_conv", "Taxa VCRA", "conv4", "Taxa da VCRA (pelo PU pago) na convenção do grupo"),
                ("dif_boleta_vcra", "Boleta − VCRA", "dif", "Diferença na convenção do grupo"),
                ("taxa", "Taxa usada", "conv4", "A taxa que entra na média"),
                ("fonte_rot", "Fonte", "fonte", "De onde veio a taxa usada")]
-    ordem = lt.sort_values(["grupo", "codigo", "dt_compra"])
+    ordem = _ordem_grupos(lt, "codigo", "dt_compra")
     selects = [("grupo", "Grupo", [g for g in COR_GRUPO if g in set(lt["grupo"])]),
                ("fonte", "Fonte", [x for x in dicas if cont.get(x)]), ("valida", "Boleta válida", ["sim", "não"])]
     ordem = ordem.assign(valida=ordem["boleta_ok"].map(lambda v: "sim" if v in (True, "sim") else "não"))
@@ -1223,23 +1332,23 @@ def _grafico_trades(f, clique, arquivo_do_dia=None):
     grafico = _legenda(cid, paineis) + f'<div id="{cid}" class="serie-chart">{svg}</div>'
     destino = "abrir o relatório do dia" if str(clique).startswith("#dia") else "ver os trades dele na tabela de baixo"
     return _secao("Trades por dia", grafico,
-                  "Cada ponto é a taxa média dos trades do dia, ponderada pelo financeiro de cada trade (os %CDI "
-                  "convertidos com o CDI do dia)" + ("; a linha laranja é a taxa da carteira na data" if cart else "")
+                  "Cada ponto é a taxa média dos trades do dia, ponderada pelo financeiro de cada trade (%CDI e pré "
+                  "convertidos com o CDI do dia; IPCA+ só com o --ipca)"
+                  + ("; a linha laranja é a taxa da carteira na data" if cart else "")
                   + f". Clique num dia para {destino}.")
 
 
-_COLUNAS_POR_DIA = [("data", "Data", "data", "Clique na linha para ver os trades do dia"),
-                    ("operacao", "Operação", "op", "Compra ou venda"), ("n_trades", "Trades", "int", "Trades no dia"),
-                    ("n_ativos", "Ativos", "int", "Ativos negociados"),
-                    ("financeiro", "Financeiro (R$)", "int", "Soma de qtd × PU dos trades"),
-                    ("taxa_total", "Taxa média", "eq", "Média ponderada pelo financeiro, em CDI+ equivalente"),
-                    ("taxa_pct", "%CDI: taxa", "pct", "Média dos %CDI, em % do CDI"),
-                    ("fin_pct", "%CDI: financeiro (R$)", "int", "Financeiro dos %CDI com taxa"),
-                    ("taxa_mais", "CDI+: spread", "eq", "Spread médio dos CDI+"),
-                    ("fin_mais", "CDI+: financeiro (R$)", "int", "Financeiro dos CDI+ com taxa"),
-                    ("n_sem_taxa", "Sem taxa", "int", "Trades sem taxa (fora das médias)"),
-                    ("fin_sem_taxa", "Sem taxa (R$)", "int", "Financeiro dos trades sem taxa"),
-                    ("cdi", "CDI (% a.a.)", "t2", "CDI do dia, para o CDI+ equivalente")]
+def _colunas_por_dia(dia=None):
+    """Colunas da tabela Trades por dia (dia None = todas, para o resumo do relatório diário)."""
+    return [("data", "Data", "data", "Clique na linha para ver os trades do dia"),
+            ("operacao", "Operação", "op", "Compra ou venda"), ("n_trades", "Trades", "int", "Trades no dia"),
+            ("n_ativos", "Ativos", "int", "Ativos negociados"),
+            ("financeiro", "Financeiro (R$)", "int", "Soma de qtd × PU dos trades"),
+            ("taxa_total", "Taxa média", "eq", "Média ponderada pelo financeiro, em CDI+ equivalente"),
+            *_colunas_grupos(dia, " com taxa"),
+            ("n_sem_taxa", "Sem taxa", "int", "Trades sem taxa (fora das médias)"),
+            ("fin_sem_taxa", "Sem taxa (R$)", "int", "Financeiro dos trades sem taxa"),
+            ("cdi", "CDI (% a.a.)", "t2", "CDI do dia, para o CDI+ equivalente")]
 
 
 def _aba_trades(f):
@@ -1267,7 +1376,8 @@ def _aba_trades(f):
     colunas = [("data", "Data", "data", "Data do trade"), ("operacao", "Operação", "op", "Compra ou venda"),
                ("codigo", "Ativo", "ativo", "Clique para abrir a ficha do ativo"),
                ("CD", "Lote", "texto", "CD da VCRAOPRF"),
-               ("grupo", "Grupo", "grupo", "CDI+ ou %CDI"), ("qt", "Quantidade", "int", "Quantidade negociada"),
+               ("grupo", "Grupo", "grupo", "CDI+, %CDI, SELIC+, Pré ou IPCA+"),
+               ("qt", "Quantidade", "int", "Quantidade negociada"),
                ("pu", "PU", "pu", "PU da operação"), ("financeiro", "Financeiro (R$)", "int", "Quantidade × PU"),
                ("data_boleta", "Boleta", "data", "Data da boleta casada"),
                ("casou_por", "Casou por", "texto", "Quantidade ou PU"),
@@ -1280,7 +1390,7 @@ def _aba_trades(f):
     fontes = [x for x in ("Lake", "VCRA", "manual", "sem taxa") if x in set(tr["fonte_rot"])]
     grupos = [g for g in COR_GRUPO if g in set(tr["grupo"])]
     filtros_dia = _filtros(tid_dia, [("op", "Operação", ops)], dica="Filtrar (data...)")
-    tabela_dia = _tabela(dia, _COLUNAS_POR_DIA, tid_dia, attrs=[("dia", "data"), ("op", "operacao")],
+    tabela_dia = _tabela(dia, _colunas_por_dia(dia), tid_dia, attrs=[("dia", "data"), ("op", "operacao")],
                          extra=f' data-filtra="{tid}"')
     filtros = _filtros(tid, [("op", "Operação", ops), ("grupo", "Grupo", grupos), ("fonte", "Fonte", fontes)],
                        dia=True, dica="Filtrar (ativo, lote...)")
@@ -1292,8 +1402,9 @@ def _aba_trades(f):
 
 def _media_por_dia(g):
     """(trades, financeiro, taxa média em CDI+ equivalente) de linhas da tabela Trades por dia: a média de cada dia
-    pesa o financeiro dos trades com taxa."""
-    peso = (g["financeiro"] - g["fin_sem_taxa"].fillna(0)).where(g["taxa_total"].notna(), 0.0)
+    pesa o financeiro dos trades que entraram nela (fin_total; nos relatórios de antes dela, os trades com taxa)."""
+    peso = _col(g, "fin_total").fillna(g["financeiro"] - g["fin_sem_taxa"].fillna(0))
+    peso = peso.where(g["taxa_total"].notna(), 0.0)
     taxa = (peso * g["taxa_total"].fillna(0)).sum() / peso.sum() if peso.sum() else np.nan
     return _int(g["n_trades"].sum()), g["financeiro"].sum(), taxa
 
@@ -1322,7 +1433,7 @@ def _aba_trades_periodo(f):
             + _grafico_trades(f, "#dia:trades", dict(zip(dia["data"], dia["arquivo"]))))
     tid = f"tbl-{f['slug']}-pordia"
     ops = [o for o in ("Compra", "Venda") if o in set(dia["operacao"])]
-    tabela = _tabela(dia, _COLUNAS_POR_DIA, tid, alta=True, attrs=[("dia", "arquivo"), ("op", "operacao")],
+    tabela = _tabela(dia, _colunas_por_dia(dia), tid, alta=True, attrs=[("dia", "arquivo"), ("op", "operacao")],
                      extra=' data-abre-dia="trades"')
     return (html + '<h2 class="aba-title">Trades por dia (mais recentes primeiro)</h2>'
             f'{_filtros(tid, [("op", "Operação", ops)], dica="Filtrar (data...)")}{tabela}')
@@ -1334,7 +1445,7 @@ def _aba_avisos(f):
         return '<p class="aviso">Nenhum aviso na data.</p>'
     tid = f"tbl-{f['slug']}-avisos"
     cartoes = "".join(
-        f'<div class="card-filtro{" info" if tipo == "Correção manual" else ""}" data-filtra="{tid}" data-campo="aviso" '
+        f'<div class="card-filtro{" info" if tipo in INFORMATIVOS else ""}" data-filtra="{tid}" data-campo="aviso" '
         f'data-valor="{_esc(tipo)}" role="button" tabindex="0"><div class="card-n">{n}</div><div><b>{_esc(tipo)}</b>'
         f'<p>{_esc(SIGNIFICADO_AVISOS.get(tipo, ""))}</p></div></div>'
         for tipo, n in av["aviso"].value_counts(sort=False).items())
@@ -1350,26 +1461,37 @@ def _aba_avisos(f):
 
 # ── Abas gerais ──────────────────────────────────────────────────────────────
 GLOSSARIO = [
+    ("Grupo", "sai do indexador do ativo na VCRA: CDI vira CDI+ (com spread de emissão) ou %CDI; SELIC (LFT), "
+              "SELIC+; pré, Pré; IPCA, IPCA+. Outros indexadores (IGP-M, dólar...) ficam fora. Na cota de FIDC, o "
+              "indexador vem do cadastro."),
     ("CDI+ (spread)", "taxa acima de 100% do CDI, em % a.a. Ex.: CDI+2,46."),
-    ("%CDI", "percentual do CDI. Ex.: 105,51% do CDI. O grupo do ativo vem da VCRA: CDI+ se tem spread de emissão, "
-             "senão %CDI."),
-    ("CDI+ equivalente", "o %CDI convertido no spread que rende o mesmo em um ano, com o CDI flat: (1 + %CDI × CDI "
-                         "diário)^252 / (1 + CDI) − 1. É o que permite juntar os dois grupos numa taxa só."),
+    ("%CDI", "percentual do CDI. Ex.: 105,51% do CDI."),
+    ("SELIC+", "spread sobre a SELIC, em % a.a. (LFT). Ex.: SELIC+0,05. Entra no CDI+ equivalente como está: a SELIC "
+               "conta como igual ao CDI."),
+    ("Pré", "taxa prefixada, em % a.a. Ex.: 13,20% a.a."),
+    ("IPCA+", "spread sobre o IPCA, em % a.a. Ex.: IPCA+7,10. Sai à parte: só entra na carteira com o IPCA projetado "
+              "(--ipca)."),
+    ("CDI+ equivalente", "a taxa levada ao spread sobre o CDI que rende o mesmo em um ano, com o CDI flat. %CDI: "
+                         "(1 + %CDI × CDI diário)^252 / (1 + CDI) − 1; pré: (1 + taxa) / (1 + CDI) − 1; IPCA+: "
+                         "(1 + IPCA) × (1 + spread) / (1 + CDI) − 1. É o que permite juntar os grupos numa taxa só."),
     ("Lote", "cada compra na custódia (CD da VCRAOPRF). Quantidade em aberto = compras − vendas do lote. Lote com "
              "sufixo A é relançamento da VCRA."),
+    ("Cota de FIDC", "código 5 + letra na posição (não está na VCRA). Entra como um lote só, com a quantidade e o "
+                     "valor da cota da posição; o lote é o próprio código da cota."),
     ("Lake", "o sistema das boletas (FUNDOS_OPERACOES), o que não é a VCRA: dele vem a taxa negociada."),
-    ("Taxa usada", "%CDI: a da boleta do Lake. CDI+: a do Lake ou a da VCRA (veja Taxa dos CDI+ nos parâmetros); sem "
-                   "boleta válida, a da VCRA. A aba Correções do Excel de entrada vale por cima de tudo. A coluna "
-                   "Fonte diz de onde veio: Lake, VCRA ou manual."),
+    ("Taxa usada", "%CDI: a da boleta do Lake. Os outros grupos: a do Lake ou a da VCRA (veja Taxa (menos %CDI) nos "
+                   "parâmetros); sem boleta válida, a da VCRA. Cota de FIDC: a média das boletas de compra do Lake ou, "
+                   "sem elas, a taxa de emissão do cadastro. A aba Correções do Excel de entrada vale por cima de "
+                   "tudo. A coluna Fonte diz de onde veio: Lake, VCRA, cadastro ou manual."),
     ("Boleta válida", "boleta casada com a taxa na convenção do grupo (limites nos parâmetros)."),
     ("Taxa VCRA", "a taxa da custódia pelo PU pago (VL_JUROSOPER), na convenção do grupo, para comparar com a boleta."),
     ("Taxa média do ativo", "média das taxas usadas nos lotes em aberto, ponderada pela quantidade."),
     ("Taxa da carteira", "média dos ativos ponderada pelo financeiro (quantidade × último PU), por grupo e no total "
-                         "em CDI+ equivalente."),
+                         "em CDI+ equivalente (sem o IPCA+, se não veio o --ipca)."),
     ("Peso e contribuição", "peso = financeiro do ativo ÷ financeiro na média; contribuição = peso × taxa em CDI+ "
                             "equivalente. A soma das contribuições é a taxa da carteira."),
     ("Trades", "compras e vendas da VCRA, com a taxa pelas regras dos lotes; relançamento (lote X → XA) não é "
-               "trade. A média do dia é ponderada pelo financeiro de cada trade."),
+               "trade, e as cotas de FIDC ficam fora. A média do dia é ponderada pelo financeiro de cada trade."),
 ]
 
 NAVEGACAO = [
@@ -1424,22 +1546,32 @@ def _fichas(f):
     """Dados da ficha de cada ativo (cabeçalho e cartões); as tabelas da ficha são as linhas das abas LOTES, TRADES e
     AVISOS do ativo, copiadas no JS."""
     ativos = {}
+    como_eq = {"%CDI": "com o CDI da data", "Pré": "(1 + taxa) / (1 + CDI) − 1", "SELIC+": "a SELIC conta como o CDI",
+               "IPCA+": "com o IPCA do --ipca"}
+    lt = f["lotes"]
+    fonte_fidc = (dict(zip(lt["codigo"], lt["fonte_rot"].replace({"Lake": "Lake (média das boletas de compra)"})))
+                  if len(lt) else {})
     for r in f["ativos"].to_dict("records"):
         g = None if _vazio(r.get("grupo")) else r["grupo"]
         emissao = f"emissão {_taxa(g, r.get('emissao'))}" if not _vazio(r.get("emissao")) else ""
         sub = " · ".join(str(x) for x in (r.get("isin"), r.get("tipo"), g, emissao) if x and not _vazio(x))
-        pu, peso = r.get("pu"), r.get("peso")
+        pu, peso, fidc = r.get("pu"), r.get("peso"), r.get("tipo") == "FIDC"
+        eq = _cdi_mais(r.get("taxa_cdi_mais"))
         ativos[r["codigo"]] = {"sub": sub, "kpis": [
-            ["Taxa média", _taxa(g, r.get("taxa_media")) or "sem taxa", "lotes ponderados pela quantidade"],
-            ["CDI+ equivalente", _cdi_mais(r.get("taxa_cdi_mais")) or "—",
-             "com o CDI da data" if g == "%CDI" else "a própria taxa"],
+            ["Taxa média", _taxa(g, r.get("taxa_media")) or "sem taxa",
+             f"fonte: {fonte_fidc.get(r['codigo'], 'sem taxa')}" if fidc else "lotes ponderados pela quantidade"],
+            ["CDI+ equivalente", eq or "—", (como_eq.get(g, "a própria taxa") if eq else
+                                            "IPCA+ sem o --ipca: fora da carteira" if g == "IPCA+" else "")],
             ["Financeiro", _rs(r.get("financeiro")),
-             f"PU {_br(pu, 6)} em {_dt(r.get('dt_pu'))}" if not _vazio(pu) else "sem PU na posição"],
+             f"{'valor da cota' if fidc else 'PU'} {_br(pu, 6)} em {_dt(r.get('dt_pu'))}" if not _vazio(pu)
+             else "sem PU na posição"],
             ["Peso na média", f"{_br(peso, 2)}%" if not _vazio(peso) else "fora da média",
              f"contribuição {_br(r.get('contrib'), 4)} p.p." if not _vazio(peso) else ""],
+            ["Cotas na posição", _br(_int(r.get("qt_posicao")), 0), "cota de FIDC: não está na VCRA"] if fidc else
             ["Lotes em aberto", _br(_int(r.get("n_lotes")), 0),
              f"{_br(_int(r.get('qt_lotes')), 0)} na VCRA × {_br(_int(r.get('qt_posicao')), 0)} na posição"],
-            ["Taxa VCRA", _taxa(g, r.get("taxa_vcra")) or "—", "média pelo PU pago, na convenção do grupo"]]}
+            ["Taxa VCRA", _taxa(g, r.get("taxa_vcra")) or "—",
+             "cota de FIDC: sem VCRA" if fidc else "média pelo PU pago, na convenção do grupo"]]}
     return {"slug": f["slug"], "data": _dt(f["data"]), "ativos": ativos}
 
 
@@ -1538,6 +1670,7 @@ def _css():
     .t-total {{ background: {ITAU_DARK}; color: #fff; }}
     .t-lake, .t-ok {{ background: #e3f3e8; color: #1e5e34; }}
     .t-vcra {{ background: #e5eefb; color: #1d4f91; }}
+    .t-cadastro {{ background: #f1ecfa; color: #4a2f86; }}
     .t-manual, .t-aviso {{ background: #fff0e0; color: #8a4200; }}
     .t-sem, .t-erro {{ background: #fdeceb; color: #a42a1e; }}
     .t-info {{ background: #eef1f6; color: #4a5468; }}
@@ -2133,9 +2266,10 @@ def _json_valor(v):
 
 
 # o que cada relatório diário guarda para o index.html: a linha de cada fundo (aba Fundos) e os trades por dia
-_RESUMO_FUNDO = ("fundo", "nome", "status", "taxa_carteira", "financeiro", "taxa_pct", "fin_pct", "taxa_mais",
-                 "fin_mais", "n_ativos", "n_lotes", "cdi", "n_avisos", "avisos")
-_RESUMO_TRADES = ("fundo",) + tuple(c for c, *_ in _COLUNAS_POR_DIA)
+_RESUMO_FUNDO = ("fundo", "nome", "status", "taxa_carteira", "financeiro",
+                 *(f"{c}_{s}" for s in SUFIXO_GRUPO.values() for c in ("taxa", "fin")),
+                 "n_ativos", "n_lotes", "cdi", "n_avisos", "avisos")
+_RESUMO_TRADES = ("fundo",) + tuple(c for c, *_ in _colunas_por_dia()) + ("fin_total",)
 
 
 def _resumo_dia(dia, t):
@@ -2205,8 +2339,12 @@ def gerar_html(caminho, tabelas, notas=(), dia=None, trades_desde=None):
     serie = str(param.get("Série (aba Histórico)", ""))
     if serie and not serie.startswith("não"):
         sub += f" &nbsp;|&nbsp; Série: <strong>{_esc(serie)}</strong>"
-    if param.get("Taxa dos CDI+"):
-        sub += f" &nbsp;|&nbsp; Taxa dos CDI+: <strong>{_esc(param['Taxa dos CDI+'])}</strong>"
+    # "Taxa dos CDI+" é o nome nas saídas de antes dos grupos SELIC+, Pré e IPCA+
+    fonte = param.get("Taxa (menos %CDI)") or param.get("Taxa dos CDI+")
+    if fonte:
+        sub += f" &nbsp;|&nbsp; Taxa (menos %CDI): <strong>{_esc(fonte)}</strong>"
+    if str(param.get("IPCA para IPCA+ → CDI+", "")).startswith(tuple("0123456789-")):
+        sub += f" &nbsp;|&nbsp; IPCA: <strong>{_esc(param['IPCA para IPCA+ → CDI+'].split(' (')[0])}</strong>"
     titulo = _dt(dia) if dia is not None else fundos[0]["fundo"] if len(fundos) == 1 else f"{len(fundos)} fundos"
     resumo_dia = _resumo_dia(dia, t) if dia is not None else ""
     rodape = list(notas)[:1] + ["Método, parâmetros e notas na aba METODOLOGIA"] + (
@@ -2239,7 +2377,7 @@ def gerar_html(caminho, tabelas, notas=(), dia=None, trades_desde=None):
   <div class="hdr-inner">
     <div>
       <h1>TAXA MÉDIA DE AQUISIÇÃO</h1>
-      <p class="sub">Crédito atrelado ao CDI &nbsp;|&nbsp; {sub}</p>
+      <p class="sub">Renda fixa e cotas de FIDC &nbsp;|&nbsp; {sub}</p>
     </div>
     <div class="brand"><span>Itaú Asset Management</span>{_logo_tag()}</div>
   </div>
@@ -2309,8 +2447,10 @@ def _dados_calendario(fundos, nomes, historico, por_dia, pasta):
             ops = trades.get(iso, {})
             resumo = [["Carteira", f"{_cdi_mais(r['taxa_carteira'])} (CDI+ eq.)" if ok else str(r.get("status"))]]
             if ok:
-                resumo += [["%CDI", _taxa("%CDI", r.get("taxa_pct")) or "—"],
-                           ["CDI+", _cdi_mais(r.get("taxa_mais")) or "—"], ["Financeiro", _rs(r.get("financeiro"))],
+                # %CDI e CDI+ sempre; SELIC+, Pré e IPCA+ só no fundo que tem
+                resumo += [[g, _taxa(g, r.get(f"taxa_{s}")) or "—"] for g, s in SUFIXO_GRUPO.items()
+                           if g in ("%CDI", "CDI+") or not _vazio(r.get(f"taxa_{s}"))]
+                resumo += [["Financeiro", _rs(r.get("financeiro"))],
                            ["Ativos · lotes", f"{_br(_int(r.get('n_ativos')), 0)} · {_br(_int(r.get('n_lotes')), 0)}"],
                            ["Avisos", _br(_int(r.get("n_avisos")), 0)],
                            ["CDI", f"{_br(r['cdi'])}% a.a." if not _vazio(r.get("cdi")) else "—"]]

@@ -1,7 +1,8 @@
 ﻿-- ─────────────────────────────────────────────
 -- taxa_media/sql/taxa_media.sql
 -- Taxa média de aquisição dos papéis de crédito atrelados ao CDI de UM fundo, com os avisos e as pendências.
--- Mesma lógica do taxa_media/__main__.py (doc/taxa_media.md), para conferir no SSMS.
+-- Mesma lógica do taxa_media/__main__.py (doc/taxa_media.md) para os grupos CDI+ e %CDI, para conferir no SSMS.
+-- Só CDI: SELIC+, pré, IPCA+ e as cotas de FIDC estão só no Python (aqui ficam fora, com o aviso de indexador).
 --
 -- Antes de rodar: preencha os parâmetros, @tipos (= aba Tipos do input/fundos.xlsx) e @correcoes (= linhas
 -- da aba Correções deste fundo com aplicar = S). Todas as leituras são WITH (NOLOCK).

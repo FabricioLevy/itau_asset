@@ -2,7 +2,7 @@
 %% Seta cheia = chamada ou dado passado; seta tracejada = leitura de arquivo ou de tabela.
 flowchart LR
     subgraph ENT["Entradas"]
-        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi<br/>--html · --diario"])
+        cli(["Linha de comando<br/>--entrada · --fundo<br/>--data · --desde<br/>--frequencia<br/>--fonte · --cdi · --ipca<br/>--html · --diario"])
         xlsxIn[("input/fundos.xlsx<br/>Fundos · Tipos · Correções")]
     end
 
@@ -12,17 +12,18 @@ flowchart LR
         fnEntrada["carregar_entrada(caminho)<br/>→ fundos · tipos · correções<br/>sem aba Tipos: TIPOS_PADRAO"]
         fnAba["_aba(abas, nome, colunas, caminho)"]
         fnAux["_chave · _sim · _texto · _numero"]
-        fnArgs["_data · _desde<br/>--data e --desde: dd/mm/aaaa ou inicio"]
+        fnArgs["_data · _desde · _taxa_aa<br/>--data e --desde: dd/mm/aaaa ou inicio<br/>--cdi e --ipca: % a.a."]
     end
 
     subgraph CARGA["Carga do banco · NOLOCK"]
-        fnFundo["carregar_fundo(query,<br/>fundo, data, tipos, desde)<br/>→ vcra · boletas · posicao<br/>data · desde · dt<br/>sem --data: última data<br/>da posição<br/>--desde sozinho: primeira<br/>data da posição"]
+        fnFundo["carregar_fundo(query,<br/>fundo, data, tipos, desde)<br/>→ vcra · boletas · posicao<br/>data · desde · dt · cadastro<br/>sem --data: última data<br/>da posição<br/>--desde sozinho: primeira<br/>data da posição"]
+        fnCodPos["_codigo_da_posicao(vcra, posicao)<br/>título público: código SELIC<br/>→ ISIN da posição"]
         fnCdi["carregar_cdi(query)<br/>→ série do CDIAcumulado<br/>uma vez por execução, sem --cdi"]
         sqlDatas["SQL_DATAS<br/>primeira e última data do fundo"]
         sqlVcra["SQL_VCRA<br/>todos os tipos · C e V · DT até a data"]
         fnLista["_lista_sql(valores)"]
-        sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>até a data + JANELA_BOLETA"]
-        sqlPos["SQL_POSICAO<br/>Fixed Income · do início − DIAS_PU até a data"]
+        sqlBol["SQL_BOLETAS<br/>ativos dos tipos incluídos<br/>e cotas de FIDC<br/>até a data + JANELA_BOLETA"]
+        sqlPos["SQL_POSICAO<br/>Fixed Income e cotas de FIDC<br/>do início − DIAS_PU até a data"]
         sqlCdi["SQL_CDI<br/>CDIAcumulado · pnl_perc"]
         sqlCad["SQL_CADASTRO<br/>ativos da VCRA e da posição<br/>date_change até a data"]
         fnConsulta["_consulta(query, sql, nome, obrigatoria)<br/>resultado vazio = erro, menos nas boletas"]
@@ -49,18 +50,20 @@ flowchart LR
     end
 
     subgraph CALC["Cálculo de uma data"]
-        fnCalc["calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos)<br/>→ lotes · ativos · carteira · avisos<br/>ordena os avisos por ORDEM_AVISOS"]
+        fnCalc["calcular(vcra, boletas, posicao, data, cdi, fonte, correcoes, tipos, cadastro, ipca)<br/>→ lotes · ativos · carteira · avisos<br/>ordena os avisos por ORDEM_AVISOS"]
         fnNorm["_normalizar(df, textos, datas, numeros)"]
-        fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador CDI"]
+        fnEscopo["filtrar_escopo(vcra, tipos, avisos)<br/>→ VCRA no escopo · motivo de quem ficou fora<br/>tipo com incluir = S e indexador de um grupo"]
+        fnGrupo["_familia · _grupo<br/>_grupo_por_ativo<br/>_grupo_cadastro · _vigente<br/>grupo pelo indexador"]
         fnLotes["montar_lotes(vcra, boletas, fonte, correcoes, cdi_d, avisos)<br/>→ lotes em aberto<br/>grupo · boleta válida (LIMITE_CONVENCAO) · taxa usada<br/>correções · aviso Boleta × VCRA (DIVERGENCIA)"]
+        fnFidc["montar_fidc(posicao, boletas, cadastro, data, correcoes, avisos)<br/>→ um lote por cota de FIDC (PADRAO_FIDC)<br/>grupo pelo cadastro · taxa do Lake ou do cadastro<br/>avisos de FIDC"]
         fnCasar["casar_boletas(compras, boletas)<br/>JANELA_BOLETA · TOLERANCIA_PU"]
-        fnAtivos["montar_ativos(lotes, posicao, data, cdi, fora, avisos)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
-        fnCons["consolidar(ativos)<br/>→ carteira: grupos e CARTEIRA"]
+        fnAtivos["montar_ativos(lotes, posicao, data, cdi, fora, avisos, ipca)<br/>→ ativos<br/>média por ativo · conferência · PU (DIAS_PU) · CDI+ equivalente"]
+        fnCons["consolidar(ativos)<br/>→ carteira: grupos e CARTEIRA<br/>(só ativos com CDI+ equivalente)"]
         fnResumo["_resumo(grupo, g)"]
         fnMedia["_media_ponderada(df, chave, valor, peso)"]
         fnAviso["_aviso(avisos, aviso, ativo, detalhe, lote)"]
         fnResumoData["resumo_da_data(data, cdi, lotes, ativos, carteira, avisos)<br/>→ linha das abas Fundos e Histórico"]
-        fnRegra["_taxa_usada<br/>_vcra_na_convencao<br/>_em_cdi_mais<br/>regra da taxa e conversões,<br/>comuns a lotes e trades"]
+        fnRegra["_taxa_usada<br/>_vcra_na_convencao<br/>_em_cdi_mais (com o IPCA)<br/>regra da taxa e conversões,<br/>comuns a lotes e trades"]
     end
 
     subgraph TRADES["Trades"]
@@ -69,7 +72,7 @@ flowchart LR
     end
 
     subgraph FMT["Console e Excel"]
-        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi)<br/>detalhe da data de referência"]
+        fnImp["imprimir_fundo(lotes, ativos, carteira, avisos, data, cdi, ipca)<br/>detalhe da data de referência"]
         fnSit["_situacao(r)<br/>linha de cada data da série e do resumo"]
         fnImpTrades["imprimir_trades(trades, relancamentos)<br/>linha dos trades no console"]
         fnBr["_br(x, casas)<br/>1.234,56"]
@@ -102,6 +105,7 @@ flowchart LR
     fnMain -->|"para cada fundo: fundo, data, tipos, desde"| fnFundo
     fnMain -->|"uma vez, sem --cdi"| fnCdi
     fnFundo --> sqlDatas & sqlVcra & sqlBol & sqlPos
+    fnFundo -->|"VCRA e posição"| fnCodPos
     fnFundo --> fnLista
     fnLista -->|"códigos"| sqlBol
     fnCdi --> sqlCdi
@@ -119,13 +123,19 @@ flowchart LR
     fnMain -->|"dados do fundo"| fnDatas
     fnMain -->|"cada data"| fnFatiar
     fnMain -->|"cada data, série do CDI"| fnCdiData
-    fnMain -->|"dados da data, cdi, fonte, correções, tipos"| fnCalc
+    fnMain -->|"dados da data, cdi, fonte, correções,<br/>tipos, cadastro, ipca"| fnCalc
     fnCalc --> fnNorm
     fnCalc -->|"1 · vcra"| fnEscopo
     fnCalc -->|"2 · VCRA no escopo, boletas"| fnLotes
-    fnCalc -->|"3 · lotes, posicao, fora"| fnAtivos
+    fnCalc -->|"2b · posição, boletas, cadastro"| fnFidc
+    fnCalc -->|"3 · lotes e cotas, posicao, fora"| fnAtivos
     fnCalc -->|"4 · ativos"| fnCons
     fnEscopo --> fnAviso
+    fnEscopo --> fnGrupo
+    fnLotes --> fnGrupo
+    fnFidc --> fnGrupo
+    fnFidc --> fnAviso
+    fnFidc --> fnBr
     fnLotes --> fnCasar
     fnLotes --> fnMedia
     fnAtivos --> fnMedia
@@ -139,6 +149,7 @@ flowchart LR
     fnMain -->|"VCRA e boletas até a data, fonte, correções, tipos"| fnTrades
     fnTrades --> fnNorm
     fnTrades --> fnEscopo
+    fnTrades --> fnGrupo
     fnTrades --> fnCasar
     fnTrades --> fnRegra
     fnTrades -->|"CDI do dia"| fnCdiData
