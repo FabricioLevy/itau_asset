@@ -31,8 +31,17 @@
 #   WITH (NOLOCK)): VW_FUNDOS_COTAS_PL, VW_FUNDOS_POSICAO, FUNDOS_DADOS_ATIVOS.
 #
 # Saída: output/batimento_<aaaammdd>.xlsx (com --de/--ate, batimento_<de>_<ate>.xlsx) — abas Resumo (um fundo por
-#   linha, com a causa mais provável, o ajuste sugerido e o resíduo), Ocorrências, Triagem, Preços, Avisos (etapas
-#   que falharam) e Leia-me. Erro numa etapa não para as outras: vira aviso.
+#   linha, com a causa mais provável, o ajuste sugerido e o resíduo), Ocorrências, Triagem, Preços, Correções (com
+#   --corrigir), Avisos (etapas que falharam) e Leia-me. Erro numa etapa não para as outras: vira aviso.
+#
+# Correção (correcao.py; nada é gravado no banco sem --aplicar e um SIM digitado)
+#   --corrigir      gera output/correcao_<...>.sql (BEGIN TRANSACTION, UPDATE com trava no valor atual da linha,
+#                   conferência cota × posição e ROLLBACK no fim), reverter_<...>.sql e backup_<...>.xlsx (as
+#                   linhas antes). Automáticas: OUTRAS_DESPESAS_ESPECIE, PRECO_FERIADO confirmado, PNL_FORA_PRECO e
+#                   DIFERENCA_IGUAL_SALDO. As outras saem comentadas ([revisar]) ou só como orientação.
+#   --aplicar       roda as automáticas numa transação, confere cota × posição de cada fundo e grava (COMMIT) só se
+#                   todas baterem e alguém digitar SIM; senão ROLLBACK. Os arquivos acima são gravados antes.
+#   --com-revisao   inclui as correções [revisar] no script e no --aplicar.
 #
 # Requisitos: ODBC Driver 18 for SQL Server, pyodbc, sqlalchemy, pandas, openpyxl. Testes: pytest tests/
 #
@@ -42,6 +51,8 @@
 #   python __main__.py --de 01/10/2026 --ate 30/10/2026 --mesa INDEXADOS
 #   python __main__.py --fundo ITAUBLO66606 ITAUIMA5P2070 --data 13/10/2026
 #   python __main__.py --limiar-bps 2 --limiar-rs 500 -v (-v mostra cada consulta e o tempo)
+#   python __main__.py --data 13/10/2026 --mesa INDEXADOS --corrigir    (só gera os scripts)
+#   python __main__.py --data 13/10/2026 --fundo ITAUBLO66606 --aplicar (aplica, confere e pede SIM)
 # ─────────────────────────────────────────────
 
 import argparse
@@ -75,6 +86,7 @@ class Resultado:
     prm: Parametros
     escopo: str = "todos os fundos"
     avisos: list = field(default_factory=list)
+    correcoes: pd.DataFrame = None      # plano de correção (--corrigir)
 
 
 # ── datas ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -197,6 +209,44 @@ def _alertas(fonte, d, hoje, fundos_escopo, prm):
     return det.alerta_feriado(d, hoje, pos[pos["codigo_IAM_fundo"].isin(fundos_escopo)], fut, prm)
 
 
+# ── correção ────────────────────────────────────────────────────────────────────────────────────────────────
+
+def corrige(fonte, res, pasta, base, com_revisao=False, aplicar=False, confirmar=input, log=print):
+    """Plano, backup e scripts (sempre); com aplicar, a transação com conferência e confirmação."""
+    import correcao as cor
+    plano = cor.monta_plano(res)
+    backup = cor.busca_linhas(fonte, plano)
+    os.makedirs(pasta, exist_ok=True)
+    stamp = datetime.now().strftime("%H%M%S")
+    arq = {"correcao": os.path.join(pasta, f"correcao_{base}_{stamp}.sql"),
+           "reverter": os.path.join(pasta, f"reverter_{base}_{stamp}.sql"),
+           "backup": os.path.join(pasta, f"backup_{base}_{stamp}.xlsx")}
+    titulo = f"{', '.join(dt(d) for d in res.datas)} ({res.escopo})"
+    if not backup.empty:
+        backup.to_excel(arq["backup"], index=False)
+    else:
+        arq.pop("backup")
+    with open(arq["correcao"], "w", encoding="utf-8-sig") as f:
+        f.write(cor.script_correcao(plano, titulo, com_revisao,
+                                    f"Backup: {os.path.basename(arq.get('backup', '-'))}. "
+                                    f"Reversão: {os.path.basename(arq['reverter'])}."))
+    with open(arq["reverter"], "w", encoding="utf-8-sig") as f:
+        f.write(cor.script_reversao(plano, titulo, com_revisao))
+    estado = None
+    if aplicar:
+        log("")
+        log("Aplicando as correções (transação; nada é gravado sem conferência e SIM):")
+        try:
+            estado = cor.aplica(cor.TransacaoSQL(fonte.conexao_escrita()), plano, com_revisao, confirmar, log)
+        except Exception as e:                       # aplica já desfez a transação
+            estado = "erro"
+            msg = f"ao aplicar: {type(e).__name__}: {e}. Nada foi gravado (ROLLBACK)."
+            res.avisos.append(msg)
+            log(f"[ERRO] {msg}")
+    res.correcoes = cor.tabela_plano(plano)
+    return {"arquivos": arq, "estado": estado, "plano": plano}
+
+
 # ── saída ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 def nome_arquivo(res, mesa=None, fundos=None):
@@ -236,6 +286,12 @@ def imprime(res, caminho=None, log=print):
         log(f"Tabela de preços: {len(res.precos)} linha(s) suspeita(s) (aba Preços).")
     if res.avisos:
         log(f"{len(res.avisos)} aviso(s): veja a aba Avisos.")
+    if res.correcoes is not None and len(res.correcoes):
+        c = res.correcoes
+        log("")
+        log("Correções (aba Correções):")
+        for (nivel, situacao), n in c.groupby(["nivel", c["situacao"].replace("", "-")]).size().items():
+            log(f"  {n:>3}  {nivel:<11} {situacao}")
     if caminho:
         log(f"Relatório: {caminho}")
 
@@ -283,6 +339,12 @@ def main(argv=None):
     ap.add_argument("--scripts-alerta", nargs="+", default=list(Parametros.scripts_alerta), metavar="SCRIPT",
                     help="scripts cuja linha de preço em feriado vira alerta (padrão: CotaExternaD0.py)")
     ap.add_argument("--sem-precos", action="store_true", help="pula as verificações na FUNDOS_DADOS_ATIVOS")
+    ap.add_argument("--corrigir", action="store_true",
+                    help="gera o script de correção (termina em ROLLBACK), o de reversão e o backup das linhas")
+    ap.add_argument("--aplicar", action="store_true",
+                    help="aplica as correções automáticas numa transação, confere e grava só com SIM digitado")
+    ap.add_argument("--com-revisao", action="store_true",
+                    help="inclui as correções [revisar] (fluxo fora do mercado, linha que explica...)")
     ap.add_argument("--saida", default=SAIDA_DIR, help="pasta do Excel (padrão: batimento/output)")
     ap.add_argument("-v", "--verboso", action="store_true", help="mostra cada consulta, o tempo e as linhas")
     args = ap.parse_args(argv)
@@ -300,12 +362,19 @@ def main(argv=None):
             print("Nenhuma data com cota no período.")
             return 1
         res = roda(fonte, datas, prm, mesa=args.mesa, fundos=args.fundo, com_precos=not args.sem_precos)
+        corr = None
+        if args.corrigir or args.aplicar:
+            base = nome_arquivo(res, args.mesa, args.fundo)[len("batimento_"):-len(".xlsx")]
+            corr = corrige(fonte, res, args.saida, base, args.com_revisao, args.aplicar)
     except RuntimeError as e:                        # credenciais ausentes ou sem conexão
         print(f"[ERRO] {e}")
         return 2
     from relatorio import grava_excel
     caminho = grava_excel(res, args.saida, nome_arquivo(res, args.mesa, args.fundo))
     imprime(res, caminho)
+    if corr:
+        for nome, arq in corr["arquivos"].items():
+            print(f"{nome.capitalize():<9}: {arq}")
     return 0
 
 

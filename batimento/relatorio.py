@@ -38,6 +38,14 @@ ABAS = {
         ("preco_anterior", "Preço anterior", "num"), ("preco", "Preço", "num"), ("variacao", "Variação", "pct"),
         ("script", "Script", "txt"), ("gravado_em", "Gravado em", "datahora"), ("usuario", "Usuário", "txt"),
         ("fundos", "Fundos", "txt"), ("exposicao_rs", "Exposição (R$)", "rs"), ("detalhe", "Detalhe", "longo")],
+    "Correções": [
+        ("bloco", "Bloco no SQL", "num0"), ("data", "Data", "data"), ("fundo", "Fundo", "txt"),
+        ("ativo", "Ativo", "txt"), ("linha", "Linha (tipo / contraparte)", "txt"),
+        ("diagnostico", "Diagnóstico", "txt"), ("nivel", "Nível", "txt"), ("situacao", "Situação", "txt"),
+        ("dif_antes", "Diferença antes (R$)", "rs"), ("ajuste", "Ajuste no PnL da linha (R$)", "rs"),
+        ("dif_esperada", "Diferença esperada depois (R$)", "rs"), ("dif_depois", "Diferença depois (R$)", "rs"),
+        ("conferencia", "Conferência", "txt"), ("pnl_antes", "PnL da linha antes (R$)", "rs"),
+        ("nota", "Nota", "longo"), ("como", "Como corrigir na origem", "longo")],
 }
 FORMATOS = {"rs": "#,##0.00", "bps": "0.00", "num": "#,##0.000000", "num0": "0", "pct": "0.00%",
             "data": "dd/mm/yyyy", "datahora": "dd/mm/yyyy hh:mm"}
@@ -92,7 +100,8 @@ def _leia_me(xw, resultado):
         ("", ""),
         ("Como ler", "Resumo: um fundo por linha, com a causa mais provável. Ocorrências: tudo o que cada verificação "
                      "encontrou. Triagem: cota × posição de todos os fundos que entraram. Preços: linhas suspeitas da "
-                     "FUNDOS_DADOS_ATIVOS para ativos em carteira."),
+                     "FUNDOS_DADOS_ATIVOS para ativos em carteira. Correções (com --corrigir): o que o script de "
+                     "correção muda em cada fundo; o número do bloco é o do arquivo correcao_*.sql."),
         ("Sinais", "Diferença = PnL da cota − PnL da posição. Ajuste sugerido = quanto somar ao PnL da posição para "
                    "desfazer a causa. Resíduo = o que sobra da diferença depois desse ajuste."),
         ("Status", "explica / confirmado: a causa fecha a diferença. parcial: explica só uma parte. corrigido: já tem "
@@ -142,6 +151,8 @@ def _grava(resultado, caminho):
         _grava_aba(xw, "Triagem", resultado.triagem[resultado.triagem["marcado"]]
                    if len(resultado.triagem) else resultado.triagem, ABAS["Triagem"])
         _grava_aba(xw, "Preços", resultado.precos, ABAS["Preços"])
+        if getattr(resultado, "correcoes", None) is not None and len(resultado.correcoes):
+            _grava_aba(xw, "Correções", resultado.correcoes, ABAS["Correções"])
         if resultado.avisos:
             pd.DataFrame({"Aviso": resultado.avisos}).to_excel(xw, sheet_name="Avisos", index=False)
             xw.sheets["Avisos"].column_dimensions["A"].width = 160

@@ -146,11 +146,14 @@ def test_itscapfia_fluxo_fora_do_mercado():
     oc = det.verifica_fundo(linha_tri(d, f, 4_599_431.37, ITS_PL, p), ld, lp, PRM)
     assert [o["verificacao"] for o in oc] == ["FLUXO_FORA_MERCADO"]   # as compras e vendas normais não entram
     o = oc[0]
-    assert o["ativo"] == "BXP3SR7" and o["status"] == "parcial"
-    assert o["ajuste_rs"] == pytest.approx(4_480_755.64, abs=0.01)
-    assert o["residuo_rs"] == pytest.approx(118_675.73, abs=0.01)
-    assert "3,00× o valor de mercado" in o["detalhe"]
-    assert "CaixaCPROutros variou R$ -2.127.979,42 sem PnL" in o["detalhe"]   # 150.447,59 − 2.278.427,01
+    assert o["ativo"] == "BXP3SR7" and o["status"] == "explica"
+    assert o["tipo_linha"] == "Equity" and o["contraparte_linha"] == "-"
+    # a mercado o resíduo seria R$ 118.675,73; pelo valor que saiu do CaixaCPROutros (150.447,59 − 2.278.427,01),
+    # a entrada fecha a diferença em R$ 6.877,85
+    assert "a diferença iria para R$ 118.675,73" in o["detalhe"]
+    assert "CaixaCPROutros variou R$ -2.127.979,42 sem PnL" in o["detalhe"]
+    assert o["ajuste_rs"] == pytest.approx(4_592_553.52, abs=0.01)
+    assert o["residuo_rs"] == pytest.approx(6_877.85, abs=0.01)
 
 
 # ── BITI11 (ITAUBLO66606): linha do CotaExternaD0.py no feriado somada duas vezes ───────────────────────────
@@ -327,8 +330,16 @@ class FonteFake:
         self.cot = pd.DataFrame(cotas)
         self.pre = precos_df
         pl = self.cot.set_index(["date", "codigo_IAM_fundo"])["last_patrimonio"]
-        self.lin["pnl_total_perc"] = [r.pnl_total / pl.get((r.date, r.codigo_IAM_fundo), np.nan)
-                                      for r in self.lin.itertuples()]
+        self.lin["last_patrimonio"] = [pl.get((r.date, r.codigo_IAM_fundo), np.nan) for r in self.lin.itertuples()]
+        self.lin["pnl_total_perc"] = self.lin["pnl_total"] / self.lin["last_patrimonio"]
+        self.lin["pnl_moeda_ativo_perc"] = self.lin["pnl_moeda_ativo"] / self.lin["last_patrimonio"]
+
+    def linhas_alvo(self, data, fundo, ativo):
+        l = self.lin
+        return l[(l["date"] == data) & (l["codigo_IAM_fundo"] == fundo) & (l["codigo_IAM_ativo"] == ativo)].copy()
+
+    def conexao_escrita(self):
+        return None
 
     def datas_com_cota(self, de, ate):
         c = self.cot[self.cot["date"].between(de, ate)]

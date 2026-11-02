@@ -84,7 +84,7 @@ PRIORIDADE = ["SEM_POSICAO", "SEM_COTA", "PRECO_FERIADO", "OUTRAS_DESPESAS_ESPEC
               "LINHA_EXPLICA", "FLUXO_FORA_MERCADO", "PNL_FORA_PRECO", "LINHA_SEM_SALDO"]
 
 COLUNAS_OCORRENCIA = ["data", "fundo", "verificacao", "titulo", "status", "ativo", "ajuste_rs", "residuo_rs",
-                      "detalhe", "acao"]
+                      "detalhe", "acao", "tipo_linha", "contraparte_linha", "data_origem", "script_origem", "sem_saldo"]
 COLUNAS_PRECOS = ["data", "ativo", "verificacao", "titulo", "preco_anterior", "preco", "variacao", "script",
                   "gravado_em", "usuario", "fundos", "exposicao_rs", "detalhe"]
 COLUNAS_RESUMO = ["date", "codigo_IAM_fundo", "mesa_gestao", "cota_bps", "posicao_bps", "dif_bps", "dif_rs",
@@ -199,10 +199,16 @@ def _quantidade(df):
     return q.where(q.notna() & (q != 0), _num(df["quantidade"]))
 
 
-def ocorrencia(data, fundo, codigo, status, ativo="", ajuste=np.nan, residuo=np.nan, detalhe="", acao=""):
+def ocorrencia(data, fundo, codigo, status, ativo="", ajuste=np.nan, residuo=np.nan, detalhe="", acao="",
+               linha=None, origem=None, sem_saldo=None):
+    """linha: (tipo, contraparte) da linha da posição; origem: (data, script) da linha de preço que causou;
+    sem_saldo: a linha não tem saldo no dia nem no anterior (só nas verificações por linha)."""
+    tipo, contraparte = linha if linha is not None else (None, None)
+    data_origem, script_origem = origem if origem is not None else (pd.NaT, None)
     return {"data": pd.Timestamp(data), "fundo": fundo, "verificacao": codigo, "titulo": VERIFICACOES[codigo][0],
             "status": status, "ativo": ativo, "ajuste_rs": ajuste, "residuo_rs": residuo, "detalhe": detalhe,
-            "acao": acao}
+            "acao": acao, "tipo_linha": tipo, "contraparte_linha": contraparte, "data_origem": data_origem,
+            "script_origem": script_origem, "sem_saldo": sem_saldo}
 
 
 def tabela_ocorrencias(ocorrencias):
@@ -370,9 +376,10 @@ def linha_que_explica(d, fundo, gap, ld, lp, fl, prm, explicadas):
         acao = ("Corrigir na carga: a contrapartida da integralização/resgate em espécie é fluxo de cotista, não "
                 f"despesa. No dia, zerar o PnL da {nome} (seção A-T do script solução).")
         return [ocorrencia(d, fundo, "OUTRAS_DESPESAS_ESPECIE", "explica", nome, -r["pnl_total"], res, detalhe,
-                           acao)]
+                           acao, linha=(r["tipo"], r["contraparte"]), sem_saldo=True)]
     acao = f"Conferir a origem do PnL da linha {nome}: sem ela, o fundo bate com a cota."
-    return [ocorrencia(d, fundo, "LINHA_EXPLICA", "explica", nome, -r["pnl_total"], res, detalhe, acao)]
+    return [ocorrencia(d, fundo, "LINHA_EXPLICA", "explica", nome, -r["pnl_total"], res, detalhe, acao,
+                       linha=(r["tipo"], r["contraparte"]), sem_saldo=sem_saldo)]
 
 
 def diferenca_igual_saldo(d, fundo, gap, ld, prm, explicadas, tol=1.0):
@@ -396,7 +403,8 @@ def diferenca_igual_saldo(d, fundo, gap, ld, prm, explicadas, tol=1.0):
     acao = (f"Conferir como a carga da posição trata o saldo de {nome}"
             + (f" e a linha {', '.join(carrega)}" if carrega else "")
             + ". Enquanto não corrigir, a diferença acompanha esse saldo todo dia.")
-    return [ocorrencia(d, fundo, "DIFERENCA_IGUAL_SALDO", "explica", nome, gap, 0.0, detalhe, acao)]
+    return [ocorrencia(d, fundo, "DIFERENCA_IGUAL_SALDO", "explica", nome, gap, 0.0, detalhe, acao,
+                       linha=(r["tipo"], r["contraparte"]))]
 
 
 def fluxo_fora_mercado(d, fundo, gap, fl, pl, prm):
@@ -426,14 +434,26 @@ def fluxo_fora_mercado(d, fundo, gap, fl, pl, prm):
                    f"{rs(r['implicito'])}, {num_br(r['razao'])}× o valor de mercado ({rs(r['mercado'])}). Isso põe "
                    f"{rs(-ajuste)} no PnL da linha (PnL do dia: {rs(r['pnl_total'])}); com o fluxo a mercado, a "
                    f"diferença iria para {rs(residuo)}.")
-        if maior is not None:
+        # contrapartida no caixa/CPR do dia, sem PnL e perto do valor de mercado (ex.: o direito que virou ação):
+        # se fecha melhor a diferença, o fluxo certo é esse valor
+        cont = caixa[(caixa["pnl_total"].abs() < 0.01) & (np.sign(-caixa["var"]) == np.sign(r["mercado"]))
+                     & ((-caixa["var"] - r["mercado"]).abs() <= 0.2 * abs(r["mercado"]))]
+        usou = False
+        if not cont.empty:
+            c = cont.loc[(-cont["var"] - r["mercado"]).abs().idxmin()]
+            ajuste_c = r["implicito"] + c["var"]
+            if abs(gap - ajuste_c) < abs(residuo):
+                ajuste, residuo, usou = ajuste_c, gap - ajuste_c, True
+                detalhe += (f" No mesmo dia, {c['codigo_IAM_ativo']} variou {rs(c['var'])} sem PnL: com o fluxo por "
+                            f"esse valor, a diferença vai para {rs(residuo)} (é o ajuste sugerido).")
+        if not usou and maior is not None:
             detalhe += (f" No mesmo dia, {maior['codigo_IAM_ativo']} variou {rs(maior['var'])}"
                         + (" sem PnL." if abs(maior["pnl_total"]) < 0.01 else "."))
         acao = (f"Conferir o evento ou a boleta de {r['codigo_IAM_ativo']} (desdobramento, grupamento, troca de "
                 "ações, direito de subscrição) e o valor de entrada.")
         status = "explica" if abs(residuo) <= prm.tolerancia(gap) else "parcial"
         oc.append(ocorrencia(d, fundo, "FLUXO_FORA_MERCADO", status, r["codigo_IAM_ativo"], ajuste, residuo,
-                             detalhe, acao))
+                             detalhe, acao, linha=(r["tipo"], r["contraparte"])))
     return oc
 
 
@@ -465,7 +485,7 @@ def pnl_fora_preco(d, fundo, gap, ld, pl, prm):
                 f"na FUNDOS_DADOS_ATIVOS entre a posição anterior e {dt(d)} (linha em feriado?).")
         status = "explica" if abs(residuo) <= prm.tolerancia(gap) else "parcial"
         oc.append(ocorrencia(d, fundo, "PNL_FORA_PRECO", status, r["codigo_IAM_ativo"], -r["dif"], residuo,
-                             detalhe, acao))
+                             detalhe, acao, linha=(r["tipo"], r["contraparte"])))
     return oc
 
 
@@ -483,7 +503,8 @@ def linhas_sem_saldo(d, fundo, gap, ld, lp, pl, prm, explicadas):
                    f"de {rs(r['pnl_total'])}.")
         status = "explica" if abs(residuo) <= prm.tolerancia(gap) else "parcial"
         oc.append(ocorrencia(d, fundo, "LINHA_SEM_SALDO", status, r["codigo_IAM_ativo"], -r["pnl_total"], residuo,
-                             detalhe, f"Conferir a origem do PnL da {r['codigo_IAM_ativo']}."))
+                             detalhe, f"Conferir a origem do PnL da {r['codigo_IAM_ativo']}.",
+                             linha=(r["tipo"], r["contraparte"]), sem_saldo=True))
     return oc
 
 
@@ -594,7 +615,7 @@ def preco_feriado(d, pos_ativos, precos_h, precos_d, anteriores, tri_d, prm):
             else:
                 acao = "Sem cota para confirmar: conferir o PnL do ativo no fundo."
             oc.append(ocorrencia(d, fundo, "PRECO_FERIADO", status, r["codigo_IAM_ativo"], -r["excesso"], residuo,
-                                 detalhe, acao))
+                                 detalhe, acao, origem=(r["data_h"], r["script_h"])))
     return oc
 
 
@@ -621,7 +642,8 @@ def alerta_feriado(d, hoje, pos_ativos, precos_fut, prm):
         acao = (f"Tirar a linha de {dt(r['data_h'])} antes da posição do próximo dia útil, ou corrigir depois com "
                 f"ajuste de PnL de {rs(-r['excesso'])}.")
         oc.append(ocorrencia(r["data_h"], r["codigo_IAM_fundo"], "PRECO_FERIADO_ALERTA", "alerta",
-                             r["codigo_IAM_ativo"], -r["excesso"], np.nan, detalhe, acao))
+                             r["codigo_IAM_ativo"], -r["excesso"], np.nan, detalhe, acao,
+                             origem=(r["data_h"], r["script_h"])))
     return oc
 
 

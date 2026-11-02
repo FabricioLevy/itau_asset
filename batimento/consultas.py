@@ -125,6 +125,21 @@ class FonteSQL:
             GROUP BY p.date, p.codigo_IAM_fundo, p.codigo_IAM_ativo, ISNULL(p.contraparte, '-'), p.tipo"""
         return self._em_lotes(sql, datas, fundos)
 
+    def linhas_alvo(self, data, fundo, ativo):
+        """Todas as colunas das linhas de um ativo num fundo e data (as que a correção vai mudar e o backup)."""
+        return self.ler("""
+            SELECT p.*
+            FROM VW_FUNDOS_POSICAO p WITH (NOLOCK)
+            WHERE p.date = ? AND p.codigo_IAM_fundo = ? AND p.codigo_IAM_ativo = ?""", [data, fundo, ativo])
+
+    def conexao_escrita(self):
+        """Conexão pyodbc (autocommit desligado) para o --aplicar."""
+        import sql_connection
+        conn = sql_connection.get_connection()
+        if conn.connection is None:
+            raise RuntimeError("sem conexão pyodbc com o DBSX337 (veja a mensagem acima)")
+        return conn.connection
+
     def ajustes_manuais(self, de, ate):
         return self.ler("""
             SELECT p.date, p.codigo_IAM_fundo, p.codigo_IAM_ativo, SUM(p.pnl_total) AS pnl_total,
