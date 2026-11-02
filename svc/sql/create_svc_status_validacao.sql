@@ -2,13 +2,18 @@
     Status de validação das cotas (portal OC3 > SVC > Consulta Status Validação): foto atual.
 
     Uma linha por Dt Posição (DATE_REF) + Sistema (SYSTEM_CODE) + Fundo (FUND). A cada execução
-    do relatorio_svc com --salvar-sql, o src/carga_sql.py faz um MERGE com o grid baixado:
-    fundo/dia que ainda não existe é inserido, o que mudou é atualizado (DATE_UPDATE) e o que
-    não veio no grid fica como estava. Cada mudança de status/valor também vai para
-    dbo.svc_status_validacao_hist (create_svc_status_validacao_hist.sql).
+    do relatorio_svc com --salvar-sql (a cada 5 min), o src/carga_sql.py faz um MERGE com o
+    grid baixado: fundo/dia que ainda não existe é inserido, o que mudou é atualizado
+    (DATE_UPDATE), tudo o que veio no grid ganha LAST_SEEN e o que não veio fica como estava.
+    Cada mudança de status/valor também vai para dbo.svc_status_validacao_hist
+    (create_svc_status_validacao_hist.sql).
+
+    LAST_SEEN mostra se o status está atualizado: se a maior LAST_SEEN tem mais de ~10 min,
+    a execução agendada parou; se a LAST_SEEN de um fundo é menor que a maior da mesma
+    DATE_REF, ele sumiu do grid (ver consultas_svc_status_validacao.sql).
 
     Colunas x relatório StatusValidacao_MesaGestao_*.xlsx:
-        DATE_REF          Dt Posição (rodando sem --dias/--data-posicao: Data efetiva)
+        DATE_REF          Dt Posição (data filtrada no portal; --salvar-sql exige --dias/--data-posicao)
         SYSTEM_CODE       Sistema (LZ, XZ)
         FUND              Fundo (sigla SAC, como aparece no portal)
         FUND_IAM_CODE     Código IAM (codigo_IAM_fundo da VW_FUNDOS_COTAS_PL; NULL se não achou)
@@ -24,6 +29,7 @@
         PROCESSING_DATE   Data Processamento
         DATE_LOAD         primeira vez que o fundo/dia foi gravado
         DATE_UPDATE       última vez que alguma coluna do fundo/dia mudou
+        LAST_SEEN         última execução em que o fundo/dia apareceu no grid
 
     Renomeia os objetos reservados (os renames mantêm os grants de cada objeto):
         dbo.TabelaReserva_GrantsApenasParaPrivado_NN  ->  dbo.svc_status_validacao
@@ -70,7 +76,9 @@ BEGIN
         DATE_LOAD           DATETIME2(0)   NOT NULL
             CONSTRAINT DF_svc_status_validacao_DATE_LOAD DEFAULT SYSDATETIME(),
         DATE_UPDATE         DATETIME2(0)   NOT NULL
-            CONSTRAINT DF_svc_status_validacao_DATE_UPDATE DEFAULT SYSDATETIME();
+            CONSTRAINT DF_svc_status_validacao_DATE_UPDATE DEFAULT SYSDATETIME(),
+        LAST_SEEN           DATETIME2(0)   NOT NULL
+            CONSTRAINT DF_svc_status_validacao_LAST_SEEN DEFAULT SYSDATETIME();
 END
 GO
 
@@ -99,7 +107,8 @@ SELECT
     PORTFOLIO_ID,
     PROCESSING_DATE,
     DATE_LOAD,
-    DATE_UPDATE
+    DATE_UPDATE,
+    LAST_SEEN
 FROM dbo.svc_status_validacao;
 GO
 

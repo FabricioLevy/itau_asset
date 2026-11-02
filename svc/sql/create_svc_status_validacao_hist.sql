@@ -8,8 +8,10 @@
     Processamento, ...) atualizam a foto atual mas não geram linha aqui.
 
     DATE_LOAD é a hora da execução em que a mudança foi vista (o portal não informa quando
-    o status mudou); é o mesmo valor gravado em DATE_UPDATE na svc_status_validacao.
-    Rodando o relatório várias vezes ao dia, o histórico mostra a evolução de cada cota.
+    o status mudou); é o mesmo valor gravado em DATE_UPDATE na svc_status_validacao. Com o
+    relatorio_svc rodando a cada 5 min, DATE_LOAD fica até ~5 min depois da mudança real, e
+    um status que começa e termina entre duas execuções não aparece. A hora exata do
+    processamento da cota vem do portal, em PROCESSING_DATE.
 
     Renomeia os objetos reservados (os renames mantêm os grants de cada objeto):
         dbo.TabelaReserva_GrantsApenasParaPrivado_NN  ->  dbo.svc_status_validacao_hist

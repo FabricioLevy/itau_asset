@@ -17,10 +17,12 @@ Use --dias/--data-posicao pra restringir a dias específicos, ou
 --explorar pra em vez disso pausar pra navegação manual (só necessário se
 for investigar uma tela nova que ainda não foi automatizada).
 
-Com --salvar-sql, além do Excel, atualiza o status dos fundos no SQL
-Server (dbo.svc_status_validacao + histórico em dbo.svc_status_validacao_hist,
-ver carga_sql.py e sql/). --carregar-sql ARQUIVO grava um relatório final
-já gerado, sem abrir o portal.
+Com --salvar-sql (exige --dias ou --data-posicao), além do Excel,
+atualiza o status dos fundos no SQL Server (dbo.svc_status_validacao +
+histórico em dbo.svc_status_validacao_hist, ver carga_sql.py e sql/).
+Feito para rodar agendado a cada 5 min: o SQL é gravado com os dados da
+execução mesmo que o Excel do relatório esteja aberto. --carregar-sql
+ARQUIVO grava um relatório final já gerado, sem abrir o portal.
 
 Requer o driver do Edge (msedgedriver.exe, já incluso em drivers/). O
 Selenium tenta baixá-lo sozinho (Selenium Manager) se --driver não for
@@ -168,12 +170,10 @@ def _parse_data(texto: str):
     return datetime.strptime(texto, "%d/%m/%Y").date()
 
 
-def salvar_sql(arquivo_final: str, a: argparse.Namespace) -> int:
-    """Grava o relatório final no SQL Server (ver carga_sql.py). Devolve o
-    código de saída: 1 se a gravação falhou (o Excel continua salvo)."""
-    import pandas as pd
-
-    df_final = pd.read_excel(arquivo_final)
+def salvar_sql(df_final, a: argparse.Namespace) -> int:
+    """Grava o relatório final (DataFrame com as colunas do Excel) no SQL
+    Server (ver carga_sql.py). Devolve o código de saída: 1 se a gravação
+    falhou (o Excel continua salvo)."""
     ok = carga_sql.atualizar_status(df_final, db=a.db, tabela=a.tabela, tabela_hist=a.tabela_hist)
     return 0 if ok else 1
 
@@ -196,6 +196,10 @@ def modo_gerar_excel(a: argparse.Namespace) -> int:
             return 1
 
     if a.dias is None and a.data_posicao is None:
+        if a.salvar_sql:
+            # a chave das tabelas é a Dt Posição, que só se conhece com filtro de data
+            _log("[erro] --salvar-sql precisa de --dias ou --data-posicao (ver carga_sql.py)")
+            return 1
         datas_posicao = None
         _log("[info] sem filtro de data: trazendo todos os fundos do grid")
     else:
@@ -229,11 +233,10 @@ def modo_gerar_excel(a: argparse.Namespace) -> int:
                   if len(datas_posicao) > 1 else datas_posicao[0].strftime("%Y%m%d"))
         data_referencia = datas_posicao[-1]
     destino = os.path.join(a.output, f"StatusValidacao_MesaGestao_{sufixo}.xlsx")
-    arquivo_final = sv.gerar_relatorio_mesa_gestao(arquivos, destino, data_referencia=data_referencia)
-    _log(f"[info] relatório final: {os.path.abspath(arquivo_final)}")
+    df_final = sv.gerar_relatorio_mesa_gestao(arquivos, destino, data_referencia=data_referencia)
 
     if a.salvar_sql:
-        return salvar_sql(arquivo_final, a)
+        return salvar_sql(df_final, a)
     return 0
 
 
@@ -312,8 +315,8 @@ def main(argv=None) -> int:
                         "Server: dbo.<--tabela> (foto atual, uma linha por Dt "
                         "Posição + Sistema + Fundo) e dbo.<--tabela-hist> "
                         "(cada mudança de Status/Status Banda/Carga Cockpit/"
-                        "Valor). Ver carga_sql.py e sql/. Requer SQL_LOGIN/"
-                        "SQL_PASSWORD no ambiente")
+                        "Valor). Ver carga_sql.py e sql/. Exige --dias ou "
+                        "--data-posicao. Requer SQL_LOGIN/SQL_PASSWORD no ambiente")
     p.add_argument("--carregar-sql", metavar="ARQUIVO", default=None,
                    help="não abre o portal: só grava no SQL Server (como o "
                         "--salvar-sql) um relatório final já gerado "
@@ -329,7 +332,8 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
 
     if a.carregar_sql:
-        return salvar_sql(a.carregar_sql, a)
+        import pandas as pd
+        return salvar_sql(pd.read_excel(a.carregar_sql), a)
     if a.explorar:
         return modo_exploracao(a)
     return modo_gerar_excel(a)

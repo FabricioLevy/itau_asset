@@ -5,8 +5,9 @@ no SQL Server (DBSX337), em duas tabelas (DDL em sql/):
 
   dbo.svc_status_validacao       foto atual: uma linha por Dt Posição +
                                  Sistema + Fundo. Fundo/dia novo é inserido,
-                                 o que mudou é atualizado, o que não veio no
-                                 grid fica como estava.
+                                 o que mudou é atualizado, tudo o que veio no
+                                 grid ganha LAST_SEEN (hora desta execução) e
+                                 o que não veio fica como estava.
   dbo.svc_status_validacao_hist  histórico: uma linha na primeira vez que o
                                  fundo/dia aparece e a cada mudança de
                                  Status, Status Banda, Carga Cockpit ou
@@ -16,10 +17,11 @@ Tudo numa transação só: as linhas vão para a temporária #svc_status, um
 MERGE atualiza a foto atual e devolve (OUTPUT) o que mudou, e isso vira o
 histórico. Se algo falhar, nada é gravado.
 
-A chave é a Dt Posição (data filtrada no portal com --dias/--data-posicao).
-Rodando sem filtro de data, usa a Data efetiva (calculada a partir da Data
-Processamento); linhas sem nenhuma das duas ("Pendente" sem processamento)
-ficam de fora da carga, porque não dá para saber de que dia são.
+A chave é a Dt Posição (data filtrada no portal com --dias/--data-posicao;
+o __main__ não aceita --salvar-sql sem filtro de data). A Data efetiva não
+serve de chave: ela sai da Data Processamento e muda quando a cota é
+reprocessada depois da janela da madrugada, e a mudança viraria um
+fundo/dia novo. Linhas sem Dt Posição ficam de fora da carga.
 
 Credenciais: variáveis de ambiente SQL_LOGIN e SQL_PASSWORD (ver sql_connection.py).
 """
@@ -120,10 +122,10 @@ WHEN MATCHED AND EXISTS (
 WHEN NOT MATCHED BY TARGET THEN
     INSERT (DATE_REF, SYSTEM_CODE, FUND, FUND_IAM_CODE, QUOTE_TYPE, LIABILITY_CODE,
             QUOTE_VALUE, QUOTE_STATUS, BAND_STATUS, COCKPIT_LOAD, DESK, QUOTE_ID,
-            PORTFOLIO_ID, PROCESSING_DATE, DATE_LOAD, DATE_UPDATE)
+            PORTFOLIO_ID, PROCESSING_DATE, DATE_LOAD, DATE_UPDATE, LAST_SEEN)
     VALUES (s.DATE_REF, s.SYSTEM_CODE, s.FUND, s.FUND_IAM_CODE, s.QUOTE_TYPE, s.LIABILITY_CODE,
             s.QUOTE_VALUE, s.QUOTE_STATUS, s.BAND_STATUS, s.COCKPIT_LOAD, s.DESK, s.QUOTE_ID,
-            s.PORTFOLIO_ID, s.PROCESSING_DATE, @agora, @agora)
+            s.PORTFOLIO_ID, s.PROCESSING_DATE, @agora, @agora, @agora)
 OUTPUT $action,
        inserted.DATE_REF, inserted.SYSTEM_CODE, inserted.FUND,
        deleted.QUOTE_STATUS, inserted.QUOTE_STATUS,
@@ -132,6 +134,16 @@ OUTPUT $action,
        deleted.QUOTE_VALUE,  inserted.QUOTE_VALUE,
        inserted.QUOTE_ID, inserted.PROCESSING_DATE
   INTO @mudancas;
+
+-- tudo o que veio no grid foi visto agora, mudando ou não (separado do MERGE,
+-- que só atualiza o que mudou e por isso só devolve mudanças no OUTPUT)
+UPDATE t
+   SET LAST_SEEN = @agora
+  FROM dbo.[{tabela}] AS t
+  JOIN #svc_status AS s
+    ON  t.DATE_REF    = s.DATE_REF
+   AND t.SYSTEM_CODE = s.SYSTEM_CODE
+   AND t.FUND        = s.FUND;
 
 -- histórico: fundo/dia novo, ou mudança em alguma das colunas acompanhadas
 INSERT INTO dbo.[{tabela_hist}] (
@@ -215,8 +227,7 @@ def montar_linhas(df_final: pd.DataFrame) -> list:
         return pd.Series(None, index=df_final.index, dtype=object)
 
     base = pd.DataFrame({
-        "date_ref": _datas(coluna("Dt Posição"), FORMATO_DATA).fillna(
-            _datas(coluna("Data"), FORMATO_DATA)),
+        "date_ref": _datas(coluna("Dt Posição"), FORMATO_DATA),
         "sistema": coluna("Sistema").map(_texto),
         "fundo": coluna("Fundo").map(_texto),
         "processamento": _datas(coluna("Data Processamento"), FORMATO_DATA_HORA),
@@ -225,9 +236,8 @@ def montar_linhas(df_final: pd.DataFrame) -> list:
 
     sem_chave = base["date_ref"].isna() | base["sistema"].isna() | base["fundo"].isna()
     if sem_chave.any():
-        _log(f"[carga_sql] aviso: {int(sem_chave.sum())} linha(s) sem Dt Posição/Data, "
-             f"Sistema ou Fundo ficaram fora da carga (rode com --dias para gravar "
-             f"também os 'Pendente' sem Data Processamento)")
+        _log(f"[carga_sql] aviso: {int(sem_chave.sum())} linha(s) sem Dt Posição, Sistema "
+             f"ou Fundo ficaram fora da carga (relatório gerado sem --dias/--data-posicao?)")
     base = base[~sem_chave]
 
     # mesma chave duas vezes no grid (ex.: cota reprocessada): fica a mais recente.

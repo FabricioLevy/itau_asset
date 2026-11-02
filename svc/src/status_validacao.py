@@ -473,12 +473,16 @@ def consultar_mesa_gestao(fundos, data_referencia: date = None, dias_historico: 
 
 
 def gerar_relatorio_mesa_gestao(arquivos: dict, destino: str,
-                                data_referencia: date = None) -> str:
+                                data_referencia: date = None) -> pd.DataFrame:
     """Junta os .xlsx filtrados/baixados de cada sistema (`arquivos`:
     {sistema: caminho}, cada um já com as colunas "DataEfetiva" e
     "DtPosicao"), busca a mesa de gestão de cada fundo via SQL (registro
     mais recente disponível — ver `consultar_mesa_gestao`) e salva um único
-    Excel em `destino`.
+    Excel em `destino`. Devolve o DataFrame do relatório (o mesmo do Excel).
+
+    Se `destino` estiver aberto no Excel (o relatório roda a cada 5 min), o
+    arquivo não é atualizado e só sai um aviso: o DataFrame devolvido continua
+    valendo, e a gravação no SQL usa ele, não o arquivo.
 
     Traz **todos** os fundos presentes nos arquivos de entrada — inclusive
     "Pendente"/sem DataProcessamento — cada um com sua própria data (coluna
@@ -542,7 +546,12 @@ def gerar_relatorio_mesa_gestao(arquivos: dict, destino: str,
     final = final.drop(columns=["_DataOrdenacao"])
 
     os.makedirs(os.path.dirname(destino) or ".", exist_ok=True)
-    final.to_excel(destino, index=False, engine="openpyxl")
-    _log(f"[status_validacao] relatório consolidado ({', '.join(final.columns)}) "
-         f"-> {destino} ({len(final)} linha(s))")
-    return destino
+    try:
+        final.to_excel(destino, index=False, engine="openpyxl")
+    except PermissionError:
+        _log(f"[status_validacao][AVISO] não consegui salvar {destino} (aberto no "
+             f"Excel?) — o arquivo ficou com o relatório da execução anterior")
+    else:
+        _log(f"[status_validacao] relatório consolidado ({', '.join(final.columns)}) "
+             f"-> {destino} ({len(final)} linha(s))")
+    return final
