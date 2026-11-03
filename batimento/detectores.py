@@ -41,9 +41,10 @@ VERIFICACOES = {
         "depois da última posição: a próxima posição deve somar essa variação duas vezes."),
     "OUTRAS_DESPESAS_ESPECIE": (
         "Integralização/resgate em espécie como despesa",
-        "Uma linha sem saldo (em geral OUTRAS_DESPESAS) tem PnL igual ao valor dos ativos que entraram ou saíram "
-        "do fundo no dia: a contrapartida da integralização/resgate em espécie virou despesa (ETFs da INDEXADOS em "
-        "out/2026)."),
+        "Uma linha sem saldo (em geral OUTRAS_DESPESAS, às vezes em mais de um registro) tem o PnL da diferença: a "
+        "contrapartida da integralização/resgate em espécie virou despesa (ETFs da INDEXADOS em out/2026). Confere "
+        "pelos ativos que entraram ou saíram no dia; senão, pelo fluxo das outras linhas da posição (ativos, caixa "
+        "e CPR); senão, na OUTRAS_DESPESAS, pelo padrão dos ETFs (fecha a diferença em até 0,1%)."),
     "LINHA_EXPLICA": (
         "Uma linha explica a diferença",
         "Tirando o PnL de uma única linha, a posição bate com a cota."),
@@ -104,6 +105,8 @@ class Parametros:
     tipos_pnl_preco: tuple = ("Fund",)  # tipos em que o PnL é quantidade × variação do preço × câmbio
     scripts_alerta: tuple = ("CotaExternaD0.py",)   # scripts cuja linha de feriado já foi contada duas vezes
     janela: int = 5                     # datas anteriores olhadas na recorrência
+    linhas_especie: tuple = ("OUTRAS_DESPESAS",)    # onde a carga lança a contrapartida da integralização em espécie
+    tol_padrao: float = 0.001           # sem o fluxo nas linhas do dia, a contrapartida tem de fechar em até 0,1%
 
     def limiar_linha(self, pl):
         if pl is None or pd.isna(pl) or pl <= 0:
@@ -346,6 +349,45 @@ def fluxos(ld, lp):
     return f
 
 
+def _saldo_anterior(lp, r):
+    ant = lp.loc[_mesma_linha(lp, r), "valor"] if not lp.empty else pd.Series(dtype=float)
+    return ant.iloc[0] if len(ant) else np.nan
+
+
+def _sem_saldo(valor, valor_ant):
+    return abs(np.nan_to_num(valor)) < 0.01 and abs(np.nan_to_num(valor_ant)) < 0.01
+
+
+def _especie(nome, tipo, pnl, gap, res, fl, fora, prm):
+    """Frase que mostra que o PnL da linha é a contrapartida de uma integralização/resgate em espécie, ou None.
+    Confere pelos ativos que mudaram de quantidade, senão pelo fluxo das outras linhas da posição (ativos, caixa e
+    CPR), senão pelo padrão dos ETFs (linha de linhas_especie que fecha a diferença em até tol_padrao)."""
+    contrapartida = -pnl                                   # > 0: integralização; < 0: resgate
+    fluxo = "integralização" if contrapartida > 0 else "resgate"
+    tol = max(prm.limiar_rs, 0.01 * abs(pnl))
+    ativos = fl[(fl["delta_q"] != 0) & ~_caixa_ou_despesa(fl["tipo"]) & (fl["contraparte"] != AJUSTE_MANUAL)]
+    especie = ativos["implicito"].sum()
+    liquido = fl.loc[~fora, "implicito"].sum()
+    if abs(especie) >= prm.limiar_rs and abs(especie - contrapartida) <= tol:
+        return (f" No mesmo dia, {len(ativos)} ativo(s) {'entraram' if especie > 0 else 'saíram'} em espécie por "
+                f"{rs(abs(especie))}: a linha é a contrapartida da {fluxo}, lançada como despesa.")
+    if abs(liquido) >= prm.limiar_rs and abs(liquido - contrapartida) <= tol:
+        return (f" Os ativos que mudaram de quantidade somam {rs(especie)}, mas o fluxo do dia nas outras linhas da "
+                f"posição (ativos, caixa e CPR) é de {rs(liquido)}: a linha é a contrapartida da {fluxo}, lançada "
+                "como despesa.")
+    if (nome in prm.linhas_especie and "despesa" in str(tipo).lower()
+            and abs(res) <= max(prm.tol_minima_rs, prm.tol_padrao * abs(gap))):
+        return (f" O fluxo da {fluxo} não aparece nas linhas do dia (ativos que mudaram de quantidade: {rs(especie)}; "
+                f"fluxo das outras linhas: {rs(liquido)}), talvez por liquidar em outra data; a linha segue o padrão "
+                f"da contrapartida em espécie dos ETFs ({nome} sem saldo com o PnL da diferença).")
+    return None
+
+
+def _acao_especie(nome):
+    return ("Corrigir na carga: a contrapartida da integralização/resgate em espécie é fluxo de cotista, não "
+            f"despesa. No dia, zerar o PnL da {nome} (seção A-T do script solução).")
+
+
 def linha_que_explica(d, fundo, gap, ld, lp, fl, prm, explicadas):
     """A linha cujo PnL, tirado da posição, fecha a diferença (OUTRAS_DESPESAS dos ETFs, AJUSTE_... etc.)."""
     cand = ld[ld["pnl_total"].abs() >= prm.limiar_rs]
@@ -355,31 +397,46 @@ def linha_que_explica(d, fundo, gap, ld, lp, fl, prm, explicadas):
     i = residuo.abs().idxmin()
     r, res = cand.loc[i], residuo.loc[i]
     if abs(res) > prm.tolerancia(gap):
-        return []
+        return _varias_linhas_especie(d, fundo, gap, ld, lp, fl, prm, explicadas)
     explicadas.add(tuple(r[c] for c in CHAVE_LINHA))
-    ant = lp.loc[_mesma_linha(lp, r), "valor"] if not lp.empty else pd.Series(dtype=float)
-    valor_ant = ant.iloc[0] if len(ant) else np.nan
-    sem_saldo = abs(np.nan_to_num(r["valor"])) < 0.01 and abs(np.nan_to_num(valor_ant)) < 0.01
+    valor_ant = _saldo_anterior(lp, r)
+    sem_saldo = _sem_saldo(r["valor"], valor_ant)
     nome = r["codigo_IAM_ativo"]
     saldo = ("sem saldo no dia nem no anterior" if sem_saldo
              else f"saldo de {rs(r['valor'])}, anterior {rs(valor_ant)}")
     detalhe = (f"A linha {nome} ({r['tipo']}, {saldo}) tem PnL de {rs(r['pnl_total'])}. Sem ela, a diferença cai "
                f"de {rs(gap)} para {rs(res)}.")
-
-    ativos = fl[(fl["delta_q"] != 0) & ~_caixa_ou_despesa(fl["tipo"]) & (fl["contraparte"] != AJUSTE_MANUAL)]
-    especie = ativos["implicito"].sum()
-    if (sem_saldo and abs(especie) >= prm.limiar_rs
-            and abs(especie + r["pnl_total"]) <= max(prm.limiar_rs, 0.01 * abs(r["pnl_total"]))):
-        fluxo = "integralização" if especie > 0 else "resgate"
-        detalhe += (f" No mesmo dia, {len(ativos)} ativo(s) {'entraram' if especie > 0 else 'saíram'} em espécie "
-                    f"por {rs(abs(especie))}: a linha é a contrapartida da {fluxo}, lançada como despesa.")
-        acao = ("Corrigir na carga: a contrapartida da integralização/resgate em espécie é fluxo de cotista, não "
-                f"despesa. No dia, zerar o PnL da {nome} (seção A-T do script solução).")
-        return [ocorrencia(d, fundo, "OUTRAS_DESPESAS_ESPECIE", "explica", nome, -r["pnl_total"], res, detalhe,
-                           acao, linha=(r["tipo"], r["contraparte"]), sem_saldo=True)]
+    frase = _especie(nome, r["tipo"], r["pnl_total"], gap, res, fl, _mesma_linha(fl, r), prm) if sem_saldo else None
+    if frase:
+        return [ocorrencia(d, fundo, "OUTRAS_DESPESAS_ESPECIE", "explica", nome, -r["pnl_total"], res,
+                           detalhe + frase, _acao_especie(nome), linha=(r["tipo"], r["contraparte"]), sem_saldo=True)]
     acao = f"Conferir a origem do PnL da linha {nome}: sem ela, o fundo bate com a cota."
     return [ocorrencia(d, fundo, "LINHA_EXPLICA", "explica", nome, -r["pnl_total"], res, detalhe, acao,
                        linha=(r["tipo"], r["contraparte"]), sem_saldo=sem_saldo)]
+
+
+def _varias_linhas_especie(d, fundo, gap, ld, lp, fl, prm, explicadas):
+    """A contrapartida em espécie dividida em várias linhas do mesmo código (contrapartes ou tipos diferentes)."""
+    for nome in prm.linhas_especie:
+        g = ld[ld["codigo_IAM_ativo"] == nome]
+        if len(g) < 2:
+            continue
+        pnl = g["pnl_total"].sum()
+        res = gap + pnl
+        if abs(pnl) < prm.limiar_rs or abs(res) > prm.tolerancia(gap):
+            continue
+        if not all(_sem_saldo(r["valor"], _saldo_anterior(lp, r)) for _, r in g.iterrows()):
+            continue
+        frase = _especie(nome, "Despesa", pnl, gap, res, fl, fl["codigo_IAM_ativo"] == nome, prm)
+        if not frase:
+            continue
+        for _, r in g.iterrows():
+            explicadas.add(tuple(r[c] for c in CHAVE_LINHA))
+        detalhe = (f"As {len(g)} linhas {nome} (sem saldo no dia nem no anterior) somam PnL de {rs(pnl)}. Sem elas, a "
+                   f"diferença cai de {rs(gap)} para {rs(res)}.")
+        return [ocorrencia(d, fundo, "OUTRAS_DESPESAS_ESPECIE", "explica", nome, -pnl, res, detalhe + frase,
+                           _acao_especie(nome), sem_saldo=True)]
+    return []
 
 
 def diferenca_igual_saldo(d, fundo, gap, ld, prm, explicadas, tol=1.0):

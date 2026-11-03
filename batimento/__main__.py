@@ -11,8 +11,9 @@
 #   anteriores o fundo também entrou.
 #
 # Verificações nos fundos que entraram (detectores.py; descrição completa na aba Leia-me do Excel)
-#   OUTRAS_DESPESAS_ESPECIE  linha sem saldo com PnL igual ao valor dos ativos que entraram/saíram em espécie
-#                            (integralização/resgate de ETF lançado como despesa)
+#   OUTRAS_DESPESAS_ESPECIE  linha sem saldo (uma ou várias) com o PnL da diferença, que é a contrapartida de uma
+#                            integralização/resgate em espécie (ETF): confere pelos ativos que entraram/saíram, pelo
+#                            fluxo das outras linhas ou, na OUTRAS_DESPESAS, pelo padrão (fecha em até 0,1%)
 #   LINHA_EXPLICA            tirando o PnL de uma única linha, a posição bate com a cota
 #   DIFERENCA_IGUAL_SALDO    a diferença é igual ao saldo de uma linha de caixa/CPR/despesa (saldo virando PnL)
 #   FLUXO_FORA_MERCADO       entrada/saída de ativo registrada por valor muito diferente do de mercado
@@ -243,7 +244,7 @@ def corrige(fonte, res, pasta, base, com_revisao=False, aplicar=False, confirmar
             msg = f"ao aplicar: {type(e).__name__}: {e}. Nada foi gravado (ROLLBACK)."
             res.avisos.append(msg)
             log(f"[ERRO] {msg}")
-    res.correcoes = cor.tabela_plano(plano)
+    res.correcoes = cor.tabela_plano(plano, com_revisao)
     return {"arquivos": arq, "estado": estado, "plano": plano}
 
 
@@ -292,6 +293,12 @@ def imprime(res, caminho=None, log=print):
         log("Correções (aba Correções):")
         for (nivel, situacao), n in c.groupby(["nivel", c["situacao"].replace("", "-")]).size().items():
             log(f"  {n:>3}  {nivel:<11} {situacao}")
+        fora = c[(c["no_script"] != "sim") & (c["nivel"] != "prevenção")]
+        if len(fora):
+            log("")
+            log(f"Fora do script ({len(fora)}): corrigir à mão ou conferir antes")
+            for _, x in fora.iterrows():
+                log(f"  {dt(x['data'])} {x['fundo']:<16} {x['diagnostico']}: {x['motivo']}")
     if caminho:
         log(f"Relatório: {caminho}")
 

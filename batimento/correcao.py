@@ -17,22 +17,33 @@
 #               no script e não entra no --aplicar (com --com-revisao, entra)
 #   sem SQL     SEM_POSICAO (reprocessar a posição pelo RunProject), SEM_COTA, SEM_CAUSA
 #   prevenção   PRECO_FERIADO_ALERTA: DELETE comentado da linha de preço do feriado, antes da próxima posição
-# Colunas alteradas: pnl_total, pnl_total_perc e, quando preenchidas, pnl_moeda_ativo e pnl_moeda_ativo_perc (as
-# do UPDATE do script solução). O percentual muda pelo ajuste ÷ last_patrimonio da própria linha. Alpha e
-# benchmark não mudam (um reprocessamento recalcula; sem corrigir a origem, ele também traz o erro de volta).
+# Uma linha da posição (fundo, ativo, contraparte, tipo) pode estar em mais de um registro da VW_FUNDOS_POSICAO
+# (estratégias est1..est5, operações): cada registro com PnL vira um UPDATE, separado dos outros pelas colunas
+# que o distinguem (IDENTIDADE). Se nada os separa, a correção fica para fazer à mão.
+# Colunas alteradas: pnl_total e pnl_total_perc; nos ajustes de preço, também pnl_moeda_ativo(_perc); nos outros,
+# a coluna de componente (pnl_moeda_ativo ou pnl_moeda_ativo_operacao) só se ela carrega todo o PnL do registro
+# (somar o ajuste numa coluna zerada criaria PnL onde não havia). O percentual muda pelo ajuste ÷ last_patrimonio
+# do próprio registro. Alpha e benchmark não mudam (um reprocessamento recalcula; sem corrigir a origem, ele também
+# traz o erro de volta).
 # ─────────────────────────────────────────────
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 
-from detectores import AJUSTE_MANUAL, dt, num_br, rs
+from detectores import AJUSTE_MANUAL, dt, rs
 
 AUTOMATICA, REVISAR, SEM_SQL, PREVENCAO = "automática", "revisar", "sem SQL", "prevenção"
 CAMINHO_POSICAO = "Posicao/SAC/importar_posicao"     # caminho do PainelControle verificado no script solução
 TOLERANCIA_RS = 1.0                                  # conferência: diferença depois × esperada
+ZERA = ("OUTRAS_DESPESAS_ESPECIE", "LINHA_EXPLICA", "LINHA_SEM_SALDO")   # a correção zera o PnL da linha
+PRECO = ("PRECO_FERIADO", "PNL_FORA_PRECO")          # ajuste de preço: vai também para o pnl_moeda_ativo
+COMPONENTES = ("pnl_moeda_ativo", "pnl_moeda_ativo_operacao")
+IDENTIDADE = ("est1", "est2", "est3", "est4", "est5", "codigo_operacao", "pac", "tipo_dado", "origem_ativo",
+              "calculo_cota", "quantidade", "quantidade_abertura", "total", "total_moeda_fundo")
+_FORA = object()                                     # valor que não serve para separar registros (data, binário)
 
 
 @dataclass
@@ -53,11 +64,15 @@ class Correcao:
     origem: list = field(default_factory=list)   # [(data, ativo, script)] linhas de preço da causa
     runproject: str = ""
     situacao: str = ""                  # pronta, linha não encontrada, ..., aplicada, desfeita
-    pnl_total: float = np.nan           # valores da linha antes da correção
+    pnl_total: float = np.nan           # valores do registro antes da correção
     pnl_total_perc: float = np.nan
-    pnl_moeda_ativo: float = np.nan
-    pnl_moeda_ativo_perc: float = np.nan
+    componente: str = ""                # pnl_moeda_ativo / pnl_moeda_ativo_operacao, se também recebe o ajuste
+    comp_valor: float = np.nan
+    comp_perc: float = np.nan
     pl: float = np.nan
+    filtro: dict = field(default_factory=dict)   # colunas que separam o registro dos outros da mesma linha
+    parte: str = ""                     # "1/2"...: a linha está em mais de um registro
+    preparada: bool = False             # o UPDATE ficou pronto (continua valendo depois de aplicada/desfeita)
     dif_depois: float = np.nan          # conferência do --aplicar
     conferencia: str = ""
 
@@ -69,8 +84,11 @@ class Correcao:
     def delta_perc(self):
         return self.delta / self.pl
 
+    def no_script(self, com_revisao):
+        return self.preparada and (self.nivel == AUTOMATICA or (com_revisao and self.nivel == REVISAR))
+
     def entra(self, com_revisao):
-        return self.pronta and (self.nivel == AUTOMATICA or (com_revisao and self.nivel == REVISAR))
+        return self.pronta and self.no_script(com_revisao)
 
 
 # ── plano ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -151,15 +169,116 @@ def monta_plano(res):
     return plano
 
 
+def _num1(v):
+    try:
+        return np.nan if v is None or pd.isna(v) else float(v)
+    except (TypeError, ValueError):
+        return np.nan
+
+
+def _valor(x, col, nome):
+    return _num1(x[col[nome]]) if nome in col else np.nan
+
+
+def _perto(a, b):
+    return pd.notna(a) and pd.notna(b) and abs(a - b) < 0.01
+
+
+def _alvos(c, pnl):
+    """Registros que a correção muda e o ajuste de cada um, ou o motivo de não dar para fazer sozinho."""
+    if len(pnl) == 1:
+        i = pnl.index[0]
+        if pd.isna(pnl[i]):
+            return [], {}, "linha sem pnl_total"
+        return [i], {i: -pnl[i] if c.verificacao in ZERA else c.delta}, ""
+    com_pnl = [i for i in pnl.index if pd.notna(pnl[i]) and abs(pnl[i]) >= 0.01]
+    if c.verificacao in ZERA and com_pnl:          # zera cada registro com PnL
+        return com_pnl, {i: -pnl[i] for i in com_pnl}, ""
+    if len(com_pnl) == 1:                           # o ajuste vai para o único registro com PnL
+        return com_pnl, {com_pnl[0]: c.delta}, ""
+    return [], {}, f"linha em {len(pnl)} registros{' com PnL' if com_pnl else ''}: corrigir à mão"
+
+
+def _norm(v, nome):
+    """Valor comparável de uma coluna de IDENTIDADE: texto, número arredondado, None (NULL) ou _FORA."""
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return None
+    if isinstance(v, str):
+        return v
+    if isinstance(v, (bool, np.bool_)):
+        return _FORA
+    if isinstance(v, (int, float, np.integer, np.floating)):
+        return round(float(v), 2 if nome.lower().startswith("total") else 6)
+    return _FORA
+
+
+def _separa(sel, cp, tp, alvos, antes, depois, col):
+    """Colunas de IDENTIDADE que, com contraparte, tipo e o PnL de antes/depois, deixam cada registro alvo único
+    entre os registros da linha (o UPDATE e a reversão acertam um só, em qualquer ordem). None se não há."""
+    idx = list(sel.index)
+    cands = [col[k] for k in IDENTIDADE if k in col]
+    vals = {k: {i: _norm(sel.at[i, k], k) for i in idx} for k in cands}
+    cands = [k for k in cands if all(v is not _FORA for v in vals[k].values()) and len(set(vals[k].values())) > 1]
+
+    def unicos(cols):
+        ch = {i: (cp[i], tp[i]) + tuple(vals[k][i] for k in cols) for i in idx}
+        return not any(o != t and ch[o] == ch[t]
+                       and (_perto(antes[o], antes[t]) or _perto(depois[o], depois[t])
+                            or _perto(depois[o], antes[t]) or _perto(antes[o], depois[t]))
+                       for t in alvos for o in idx)
+
+    usadas = []
+    for k in [None] + cands:
+        if k is not None:
+            usadas.append(k)
+        if unicos(usadas):
+            return {t: {k: vals[k][t] for k in usadas} for t in alvos}
+    return None
+
+
+def _componente(c, x, col):
+    """Coluna de componente que também recebe o ajuste: pnl_moeda_ativo nos ajustes de preço; nos outros, a que
+    carrega todo o PnL do registro (numa coluna zerada, o ajuste criaria PnL onde não havia)."""
+    if c.verificacao in PRECO:
+        nomes = ("pnl_moeda_ativo",)
+    elif pd.notna(c.pnl_total) and abs(c.pnl_total) >= 0.01:
+        nomes = tuple(k for k in COMPONENTES if _perto(_valor(x, col, k), c.pnl_total))
+    else:
+        nomes = ()
+    for k in nomes:
+        v = _valor(x, col, k)
+        if pd.notna(v):
+            return k, v, _valor(x, col, k + "_perc")
+    return "", np.nan, np.nan
+
+
+def _preenche(c, x, col, tipo, contraparte):
+    c.tipo, c.contraparte = tipo, contraparte
+    c.pnl_total, c.pnl_total_perc = _valor(x, col, "pnl_total"), _valor(x, col, "pnl_total_perc")
+    c.componente, c.comp_valor, c.comp_perc = _componente(c, x, col)
+    pl = _valor(x, col, "last_patrimonio")
+    c.pl = pl if pd.notna(pl) and pl > 0 else c.pl_triagem
+    if pd.isna(c.pnl_total):
+        c.situacao = "linha sem pnl_total"
+    elif not (pd.notna(c.pl) and c.pl > 0):
+        c.situacao = "sem PL para recalcular o percentual"
+    else:
+        c.situacao, c.preparada = "pronta", True
+
+
 def busca_linhas(fonte, plano):
-    """Busca a linha de cada correção (uma só por chave) e guarda os valores de antes. Devolve o backup."""
-    backup = []
-    for i, c in enumerate(plano, start=1):
+    """Busca os registros de cada correção na VW_FUNDOS_POSICAO e guarda os valores de antes. Uma linha em vários
+    registros vira uma correção por registro com PnL. Troca o plano no lugar (os blocos do SQL seguem a nova
+    ordem) e devolve o backup (os registros da linha, com o bloco e se o registro muda)."""
+    novo, backup = [], []
+    for c in plano:
         if c.nivel not in (AUTOMATICA, REVISAR) or not c.ativo or pd.isna(c.delta):
+            novo.append(c)
             continue
         df = fonte.linhas_alvo(c.data, c.fundo, c.ativo)
         if df is None or df.empty:
             c.situacao = "linha não encontrada"
+            novo.append(c)
             continue
         col = {str(k).lower(): k for k in df.columns}
         cp = df[col["contraparte"]].fillna("-").astype(str)
@@ -169,23 +288,36 @@ def busca_linhas(fonte, plano):
         else:                                   # linha do ativo: fora ajuste manual e caixa/CPR do mesmo código
             m = (cp != AJUSTE_MANUAL) & ~tp.str.lower().str.startswith("caixa")
         sel = df[m]
-        backup.append(sel.assign(correcao=i))
-        if len(sel) != 1:
-            c.situacao = "linha não encontrada" if sel.empty else f"linha em {len(sel)} registros: corrigir à mão"
+        if sel.empty:
+            c.situacao = "linha não encontrada"
+            novo.append(c)
             continue
-        x = sel.iloc[0]
-        val = lambda nome: pd.to_numeric(x[col[nome]], errors="coerce") if nome in col else np.nan  # noqa: E731
-        c.tipo, c.contraparte = tp[m].iloc[0], cp[m].iloc[0]
-        c.pnl_total, c.pnl_total_perc = val("pnl_total"), val("pnl_total_perc")
-        c.pnl_moeda_ativo, c.pnl_moeda_ativo_perc = val("pnl_moeda_ativo"), val("pnl_moeda_ativo_perc")
-        pl = val("last_patrimonio")
-        c.pl = pl if pd.notna(pl) and pl > 0 else c.pl_triagem
-        if pd.isna(c.pnl_total):
-            c.situacao = "linha sem pnl_total"
-        elif not (pd.notna(c.pl) and c.pl > 0):
-            c.situacao = "sem PL para recalcular o percentual"
+        pnl = sel[col["pnl_total"]].map(_num1)
+        alvos, deltas, motivo = _alvos(c, pnl)
+        if not motivo and c.verificacao in ZERA and abs(sum(deltas.values()) - c.delta) > 0.01:
+            motivo = (f"o PnL da linha mudou desde o diagnóstico ({rs(-c.delta)} → {rs(-sum(deltas.values()))}): "
+                      "rode de novo")
+        filtros = None
+        if not motivo:
+            antes = pnl.to_dict()
+            depois = {i: antes[i] + deltas.get(i, 0.0) for i in sel.index}
+            filtros = _separa(sel, cp, tp, alvos, antes, depois, col)
+            if filtros is None:
+                motivo = f"linha em {len(sel)} registros que nada separa: corrigir à mão"
+        primeiro = len(novo) + 1
+        if motivo:
+            c.situacao = motivo
+            novo.append(c)
+            alvos = []
         else:
-            c.situacao = "pronta"
+            for k, i in enumerate(alvos, start=1):
+                n = replace(c, delta=deltas[i], filtro=filtros[i], origem=c.origem if k == 1 else [],
+                            parte=f"{k}/{len(alvos)}" if len(alvos) > 1 else "")
+                _preenche(n, sel.loc[i], col, tp[i], cp[i])
+                novo.append(n)
+        backup.append(sel.assign(correcao=[primeiro + alvos.index(i) if i in alvos else primeiro for i in sel.index],
+                                 alterado=["sim" if i in alvos else "não" for i in sel.index]))
+    plano[:] = novo
     return pd.concat(backup, ignore_index=True) if backup else pd.DataFrame()
 
 
@@ -203,50 +335,65 @@ def _d(x):
     return f"'{pd.Timestamp(x):%Y-%m-%d}'"
 
 
-def _where(c, guarda_total, guarda_moeda, parametros):
+def _cond_filtro(nome, v, parametros):
+    """Condição de uma coluna que separa o registro: NULL, texto igual ou número com tolerância."""
+    if v is None:
+        return f"{nome} IS NULL", []
+    if isinstance(v, str):
+        return f"{nome} = {'?' if parametros else _s(v)}", [v]
+    tol = "0.01" if nome.lower().startswith("total") else "0.000001"
+    return f"ABS({nome} - ({'?' if parametros else _n(v)})) < {tol}", [float(v)]
+
+
+def _where(c, guarda_total, guarda_comp, parametros):
     if parametros:
         val, txt, dat = (lambda x: "?"), (lambda x: "?"), (lambda x: "?")
     else:
         val, txt, dat = _n, _s, _d
     cond = [f"date = {dat(c.data)}", f"codigo_IAM_fundo = {txt(c.fundo)}", f"codigo_IAM_ativo = {txt(c.ativo)}",
-            f"ISNULL(contraparte, '-') = {txt(c.contraparte)}", f"ISNULL(tipo, '') = {txt(c.tipo)}",
-            f"ABS(pnl_total - ({val(guarda_total)})) < 0.01"]
-    params = [pd.Timestamp(c.data).date(), c.fundo, c.ativo, c.contraparte, c.tipo, float(guarda_total)]
-    if pd.notna(guarda_moeda):
-        cond.append(f"ABS(pnl_moeda_ativo - ({val(guarda_moeda)})) < 0.01")
-        params.append(float(guarda_moeda))
+            f"ISNULL(contraparte, '-') = {txt(c.contraparte)}", f"ISNULL(tipo, '') = {txt(c.tipo)}"]
+    params = [pd.Timestamp(c.data).date(), c.fundo, c.ativo, c.contraparte, c.tipo]
+    for nome, v in c.filtro.items():
+        s, p = _cond_filtro(nome, v, parametros)
+        cond.append(s)
+        params += p
+    cond.append(f"ABS(pnl_total - ({val(guarda_total)})) < 0.01")
+    params.append(float(guarda_total))
+    if c.componente and pd.notna(guarda_comp):
+        cond.append(f"ABS({c.componente} - ({val(guarda_comp)})) < 0.01")
+        params.append(float(guarda_comp))
     return "\n   AND ".join(cond), params
 
 
 def sql_update(c, parametros=False):
-    """UPDATE que soma o ajuste ao PnL da linha (só se ela ainda tiver os valores do diagnóstico)."""
+    """UPDATE que soma o ajuste ao PnL do registro (só se ele ainda tiver os valores do diagnóstico)."""
     v = (lambda x: "?") if parametros else _n
     sets, params = [f"pnl_total = pnl_total + ({v(c.delta)})"], [float(c.delta)]
     if pd.notna(c.pnl_total_perc):
         sets.append(f"pnl_total_perc = pnl_total_perc + ({v(c.delta_perc)})")
         params.append(float(c.delta_perc))
-    if pd.notna(c.pnl_moeda_ativo):
-        sets.append(f"pnl_moeda_ativo = pnl_moeda_ativo + ({v(c.delta)})")
+    if c.componente and pd.notna(c.comp_valor):
+        sets.append(f"{c.componente} = {c.componente} + ({v(c.delta)})")
         params.append(float(c.delta))
-        if pd.notna(c.pnl_moeda_ativo_perc):
-            sets.append(f"pnl_moeda_ativo_perc = pnl_moeda_ativo_perc + ({v(c.delta_perc)})")
+        if pd.notna(c.comp_perc):
+            sets.append(f"{c.componente}_perc = {c.componente}_perc + ({v(c.delta_perc)})")
             params.append(float(c.delta_perc))
-    where, wp = _where(c, c.pnl_total, c.pnl_moeda_ativo, parametros)
+    where, wp = _where(c, c.pnl_total, c.comp_valor, parametros)
     return "UPDATE VW_FUNDOS_POSICAO\n   SET " + ",\n       ".join(sets) + "\n WHERE " + where, params + wp
 
 
 def sql_reverte(c):
-    """UPDATE que devolve a linha aos valores de antes (só se ela ainda tiver os valores corrigidos)."""
+    """UPDATE que devolve o registro aos valores de antes (só se ele ainda tiver os valores corrigidos)."""
     sets = [f"pnl_total = {_n(c.pnl_total)}"]
     if pd.notna(c.pnl_total_perc):
         sets.append(f"pnl_total_perc = {_n(c.pnl_total_perc)}")
-    guarda_moeda = np.nan
-    if pd.notna(c.pnl_moeda_ativo):
-        sets.append(f"pnl_moeda_ativo = {_n(c.pnl_moeda_ativo)}")
-        guarda_moeda = c.pnl_moeda_ativo + c.delta
-        if pd.notna(c.pnl_moeda_ativo_perc):
-            sets.append(f"pnl_moeda_ativo_perc = {_n(c.pnl_moeda_ativo_perc)}")
-    where, _ = _where(c, c.pnl_total + c.delta, guarda_moeda, False)
+    guarda_comp = np.nan
+    if c.componente and pd.notna(c.comp_valor):
+        sets.append(f"{c.componente} = {_n(c.comp_valor)}")
+        guarda_comp = c.comp_valor + c.delta
+        if pd.notna(c.comp_perc):
+            sets.append(f"{c.componente}_perc = {_n(c.comp_perc)}")
+    where, _ = _where(c, c.pnl_total + c.delta, guarda_comp, False)
     return "UPDATE VW_FUNDOS_POSICAO\n   SET " + ",\n       ".join(sets) + "\n WHERE " + where
 
 
@@ -262,7 +409,7 @@ def esperadas(plano, com_revisao):
     """Diferença esperada depois, por (data, fundo): a de antes menos os ajustes que entram."""
     out = {}
     for c in plano:
-        if c.entra(com_revisao):
+        if c.no_script(com_revisao):
             k = (c.data, c.fundo)
             ant = out.get(k, (c.dif_antes, c.classe))[0]
             out[k] = (ant - c.delta, c.classe)
@@ -291,14 +438,47 @@ def _comenta(txt):
     return "\n".join("-- " + l if l.strip() else "--" for l in txt.splitlines())
 
 
+def _filtro_txt(c):
+    return ", ".join(f"{k} = {'NULL' if v is None else v}" for k, v in c.filtro.items())
+
+
+def no_script(c, com_revisao):
+    """sim: o UPDATE roda; comentado: [revisar] pronto, fora sem --com-revisao; não: sem UPDATE."""
+    if c.no_script(com_revisao):
+        return "sim"
+    return "comentado" if c.preparada and c.nivel == REVISAR else "não"
+
+
+def fora_do_script(plano, com_revisao):
+    """Correções (fora as de prevenção) que o script não aplica, com o motivo."""
+    out = []
+    for c in plano:
+        if c.nivel == PREVENCAO or c.no_script(com_revisao):
+            continue
+        if c.preparada and c.nivel == REVISAR:
+            motivo = "[revisar] UPDATE comentado: confira e use --com-revisao"
+        elif c.situacao and not c.pronta:
+            motivo = c.situacao
+        else:
+            motivo = f"[{c.nivel}] " + (c.nota or "").split(". ")[0].rstrip(".")
+        out.append((c, motivo))
+    return out
+
+
 def _cabecalho_bloco(i, c):
     linha = f" ({c.tipo})" if c.tipo else ""
+    parte = f" | registro {c.parte}" if c.parte else ""
     out = [f"-- {'-' * 100}",
-           f"-- {i}) {c.fundo} | {dt(c.data)} | {c.ativo or '-'}{linha} | {c.diagnostico} [{c.nivel}]"]
+           f"-- {i}) {c.fundo} | {dt(c.data)} | {c.ativo or '-'}{linha}{parte} | {c.diagnostico} [{c.nivel}]"]
     if pd.notna(c.delta):
         depois = c.dif_antes - c.delta if pd.notna(c.dif_antes) else np.nan
-        out.append(f"--    diferença antes {rs(c.dif_antes)} | ajuste no PnL da linha {rs(c.delta)} | "
-                   f"diferença esperada depois {rs(depois)}")
+        out.append(f"--    diferença antes {rs(c.dif_antes)} | ajuste no PnL {'do registro' if c.parte else 'da linha'} "
+                   f"{rs(c.delta)} | diferença esperada depois "
+                   + (f"{rs(depois)}" if not c.parte else "(soma dos registros: veja a conferência)"))
+    if c.filtro:
+        out.append(f"--    registro separado por: {_filtro_txt(c)}")
+    if c.pronta and not c.componente and c.verificacao not in PRECO:
+        out.append("--    só pnl_total(_perc): nenhum componente (pnl_moeda_ativo...) carrega todo o PnL do registro.")
     if c.situacao and not c.pronta:
         out.append(f"--    !! {c.situacao}: sem UPDATE.")
     for frase in (c.nota or "").split(". "):
@@ -314,7 +494,7 @@ def _origens(c):
     for data_o, ativo_o, script_o in c.origem:
         if pd.isna(data_o) or not script_o:
             continue
-        out.append(f"-- Origem (opcional; só se ninguém mais usa essa linha de preço):")
+        out.append("-- Origem (opcional; só se ninguém mais usa essa linha de preço):")
         out.append(f"-- DELETE FROM FUNDOS_DADOS_ATIVOS WHERE date = {_d(data_o)} AND codigo_IAM_ativo = "
                    f"{_s(ativo_o)} AND log_script_from = {_s(script_o)};")
     return out
@@ -333,11 +513,18 @@ def script_correcao(plano, titulo, com_revisao=False, arquivos=""):
            "-- reprocessou o fundo depois, a linha não muda, o script conta um erro e o certo é gerar de novo.",
            f"-- Blocos [revisar] saem comentados{' (aqui incluídos: --com-revisao)' if com_revisao else ''}; "
            "[sem SQL] e [prevenção] são só orientação.",
-           f"-- {'=' * 100}",
-           "SET XACT_ABORT ON;",
-           "BEGIN TRANSACTION;",
-           "DECLARE @erros INT = 0;",
-           ""]
+           f"-- {'=' * 100}"]
+    dentro = [c for c in plano if c.entra(com_revisao)]
+    fora = fora_do_script(plano, com_revisao)
+    out.append(f"-- No script: {len(dentro)} UPDATE(s) em {len({(c.data, c.fundo) for c in dentro})} fundo(s)/data(s). "
+               + (f"Fora: {len(fora)} (corrigir à mão ou conferir antes):" if fora else "Fora: nenhuma."))
+    for c, motivo in fora:
+        out.append(f"--   {dt(c.data)} {c.fundo:<16} {c.diagnostico}: {motivo}")
+    out += [f"-- {'=' * 100}",
+            "SET XACT_ABORT ON;",
+            "BEGIN TRANSACTION;",
+            "DECLARE @erros INT = 0;",
+            ""]
     for i, c in enumerate(plano, start=1):
         out += _cabecalho_bloco(i, c)
         if c.pronta and c.nivel in (AUTOMATICA, REVISAR):
@@ -379,7 +566,8 @@ def script_reversao(plano, titulo, com_revisao=False):
         if not c.entra(com_revisao):
             continue
         n += 1
-        out += [f"-- {i}) {c.fundo} | {dt(c.data)} | {c.ativo} ({c.tipo}) | volta o PnL a {rs(c.pnl_total)}",
+        parte = f" | registro {c.parte}" if c.parte else ""
+        out += [f"-- {i}) {c.fundo} | {dt(c.data)} | {c.ativo} ({c.tipo}){parte} | volta o PnL a {rs(c.pnl_total)}",
                 sql_reverte(c) + ";",
                 f"IF @@ROWCOUNT <> 1 BEGIN SET @erros = @erros + 1; PRINT {_s(f'ERRO no bloco {i}: {c.fundo}/{c.ativo}')};"
                 " END;", ""]
@@ -390,19 +578,27 @@ def script_reversao(plano, titulo, com_revisao=False):
     return "\n".join(out)
 
 
-def tabela_plano(plano):
+def tabela_plano(plano, com_revisao=False):
+    esp = esperadas(plano, com_revisao)
+    motivos = {id(c): m for c, m in fora_do_script(plano, com_revisao)}
     linhas = []
     for i, c in enumerate(plano, start=1):
-        depois = c.dif_antes - c.delta if pd.notna(c.dif_antes) and pd.notna(c.delta) else np.nan
+        if (c.data, c.fundo) in esp and c.no_script(com_revisao):
+            depois = esp[(c.data, c.fundo)][0]          # do fundo, com todos os registros
+        elif c.nivel in (AUTOMATICA, REVISAR) and pd.notna(c.dif_antes) and pd.notna(c.delta):
+            depois = c.dif_antes - c.delta
+        else:
+            depois = np.nan
         como = c.runproject or "; ".join(
             f"DELETE da linha de {dt(o[0])} do {o[1]} ({o[2]}) na FUNDOS_DADOS_ATIVOS (opcional)"
             for o in c.origem if pd.notna(o[0]))
         linhas.append({"bloco": i, "data": c.data, "fundo": c.fundo, "ativo": c.ativo,
-                       "linha": f"{c.tipo} / {c.contraparte}" if c.tipo else "", "diagnostico": c.diagnostico,
-                       "nivel": c.nivel, "situacao": c.situacao, "dif_antes": c.dif_antes, "ajuste": c.delta,
-                       "dif_esperada": depois if c.nivel in (AUTOMATICA, REVISAR) else np.nan,
-                       "dif_depois": c.dif_depois, "conferencia": c.conferencia, "nota": c.nota,
-                       "como": como, "pnl_antes": c.pnl_total})
+                       "linha": f"{c.tipo} / {c.contraparte}" if c.tipo else "", "registro": c.parte,
+                       "filtro": _filtro_txt(c), "diagnostico": c.diagnostico, "nivel": c.nivel,
+                       "situacao": c.situacao, "no_script": no_script(c, com_revisao),
+                       "motivo": motivos.get(id(c), ""), "dif_antes": c.dif_antes, "ajuste": c.delta,
+                       "dif_esperada": depois, "dif_depois": c.dif_depois, "conferencia": c.conferencia,
+                       "componente": c.componente, "nota": c.nota, "como": como, "pnl_antes": c.pnl_total})
     return pd.DataFrame(linhas)
 
 

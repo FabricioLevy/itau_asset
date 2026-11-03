@@ -40,11 +40,13 @@ ABAS = {
         ("fundos", "Fundos", "txt"), ("exposicao_rs", "Exposição (R$)", "rs"), ("detalhe", "Detalhe", "longo")],
     "Correções": [
         ("bloco", "Bloco no SQL", "num0"), ("data", "Data", "data"), ("fundo", "Fundo", "txt"),
-        ("ativo", "Ativo", "txt"), ("linha", "Linha (tipo / contraparte)", "txt"),
+        ("ativo", "Ativo", "txt"), ("linha", "Linha (tipo / contraparte)", "txt"), ("registro", "Registro", "txt"),
         ("diagnostico", "Diagnóstico", "txt"), ("nivel", "Nível", "txt"), ("situacao", "Situação", "txt"),
-        ("dif_antes", "Diferença antes (R$)", "rs"), ("ajuste", "Ajuste no PnL da linha (R$)", "rs"),
+        ("no_script", "No script", "txt"), ("motivo", "Por que ficou fora", "longo"),
+        ("dif_antes", "Diferença antes (R$)", "rs"), ("ajuste", "Ajuste no PnL (R$)", "rs"),
         ("dif_esperada", "Diferença esperada depois (R$)", "rs"), ("dif_depois", "Diferença depois (R$)", "rs"),
-        ("conferencia", "Conferência", "txt"), ("pnl_antes", "PnL da linha antes (R$)", "rs"),
+        ("conferencia", "Conferência", "txt"), ("pnl_antes", "PnL do registro antes (R$)", "rs"),
+        ("componente", "Componente também ajustado", "txt"), ("filtro", "Registro separado por", "txt"),
         ("nota", "Nota", "longo"), ("como", "Como corrigir na origem", "longo")],
 }
 FORMATOS = {"rs": "#,##0.00", "bps": "0.00", "num": "#,##0.000000", "num0": "0", "pct": "0.00%",
@@ -115,7 +117,8 @@ def _leia_me(xw, resultado):
                        f"{num_br(p.faixa_preco[0])}× e {num_br(p.faixa_preco[1])}× o valor de mercado; salto de preço "
                        f"acima de {num_br(p.salto_preco * 100, 0)}%; PnL de preço nos tipos "
                        f"{', '.join(p.tipos_pnl_preco)}; scripts de alerta: {', '.join(p.scripts_alerta)}; "
-                       f"recorrência nas {p.janela} datas anteriores."),
+                       f"contrapartida em espécie pelo padrão em {', '.join(p.linhas_especie)} (resíduo até "
+                       f"{num_br(p.tol_padrao * 100, 1)}% da diferença); recorrência nas {p.janela} datas anteriores."),
         ("Fontes", "VW_FUNDOS_COTAS_PL, VW_FUNDOS_POSICAO, FUNDOS_DADOS_ATIVOS (DBSX337, leituras WITH (NOLOCK))."),
         ("", ""),
         ("Verificação", "O que procura"),

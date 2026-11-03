@@ -92,6 +92,53 @@ def test_b5p211_outras_despesas_em_especie():
     assert "integralização" in o["detalhe"]
 
 
+# ── variações da contrapartida em espécie (ETFs que ficaram fora da primeira correção de out/2026) ──────────
+
+def etf_linhas(od, ativos, d="2026-10-16", p="2026-10-15", fundo="ETFX"):
+    """od: [(contraparte, pnl)] da OUTRAS_DESPESAS; ativos: [(ativo, tipo, qtd_d1, qtd_d, valor_d1, valor_d, pnl)]."""
+    ld = linhas(*[L(d, fundo, "OUTRAS_DESPESAS", "Despesa", 1, 0.0, pnl, contraparte=cp) for cp, pnl in od],
+                *[L(d, fundo, a, t, qd, vd, pnl) for a, t, _, qd, _, vd, pnl in ativos])
+    lp = linhas(*[L(p, fundo, a, t, qp, vp, 0.0) for a, t, qp, _, vp, _, _ in ativos])
+    return ld, lp
+
+
+def test_resgate_sem_fluxo_nas_linhas_do_dia_pelo_padrao():
+    # como o ITAUIRFMP24216 em 09/10: OUTRAS_DESPESAS de +R$ 21,9 mi e nenhum título saiu no dia
+    ativos = [("BRSTNCLTN8B0", "Fixed Income", 50_000, 50_000, 41_000_000.0, 41_010_000.0, 10_000.0),
+              ("caixa_brl", "CaixaCPR", 1, 1, 200_000.0, 200_000.0, 0.0)]
+    ld, lp = etf_linhas([("-", 21_921_796.20)], ativos)
+    t = linha_tri("2026-10-16", "ETFX", -21_921_796.34, 1.2e10, "2026-10-15")
+    oc = det.verifica_fundo(t, ld, lp, PRM)
+    assert [o["verificacao"] for o in oc] == ["OUTRAS_DESPESAS_ESPECIE"]
+    assert oc[0]["residuo_rs"] == pytest.approx(-0.14, abs=0.01)
+    assert "resgate" in oc[0]["detalhe"] and "não aparece nas linhas do dia" in oc[0]["detalhe"]
+    # a mesma linha com outro código não segue o padrão: fica para conferir
+    ld2 = ld.assign(codigo_IAM_ativo=ld["codigo_IAM_ativo"].replace("OUTRAS_DESPESAS", "OUTRA_LINHA"))
+    assert [o["verificacao"] for o in det.verifica_fundo(t, ld2, lp, PRM)] == ["LINHA_EXPLICA"]
+
+
+def test_integralizacao_com_parte_em_caixa_pelo_fluxo_das_outras_linhas():
+    # R$ 10 mi integralizados: R$ 9 mi em títulos e R$ 1 mi em caixa
+    ativos = [("BRSTNCNTB3B8", "Fixed Income", 100_000, 101_800, 500_000_000.0, 509_000_000.0, 0.0),
+              ("caixa_brl", "CaixaCPR", 1, 1, 300_000.0, 1_300_000.0, 0.0)]
+    ld, lp = etf_linhas([("-", -10_000_000.0)], ativos)
+    oc = det.verifica_fundo(linha_tri("2026-10-16", "ETFX", 10_000_120.0, 5e8, "2026-10-15"), ld, lp, PRM)
+    assert [o["verificacao"] for o in oc] == ["OUTRAS_DESPESAS_ESPECIE"]
+    assert "fluxo do dia nas outras linhas da posição (ativos, caixa e CPR) é de R$ 10.000.000,00" in oc[0]["detalhe"]
+    assert "integralização" in oc[0]["detalhe"]
+
+
+def test_contrapartida_dividida_em_duas_linhas():
+    ativos = [("BRSTNCNTB3B8", "Fixed Income", 100_000, 102_474, 500_000_000.0, 512_371_026.54, 1_026.54)]
+    ld, lp = etf_linhas([("AP1", -6_000_000.0), ("AP2", -6_370_021.80)], ativos)
+    oc = det.verifica_fundo(linha_tri("2026-10-16", "ETFX", 12_369_995.26, 5e8, "2026-10-15"), ld, lp, PRM)
+    assert [o["verificacao"] for o in oc] == ["OUTRAS_DESPESAS_ESPECIE"]
+    o = oc[0]
+    assert o["ajuste_rs"] == pytest.approx(12_370_021.80) and o["residuo_rs"] == pytest.approx(-26.54, abs=0.01)
+    assert o["tipo_linha"] is None and o["detalhe"].startswith("As 2 linhas OUTRAS_DESPESAS")
+    assert "1 ativo(s) entraram em espécie por R$ 12.370.000,00" in o["detalhe"]
+
+
 # ── FICFI53254 em 20/10: a diferença é o saldo do CaixaCPROutros, via AJUSTE_COMPENSACAO_COTAS ──────────────
 
 FIC_D = [  # (ativo, tipo, qtd, total_d1, total_d, pnl_total)
@@ -358,8 +405,16 @@ class FonteFake:
                              "pnl_ajuste_manual": g["ajuste"].sum()}).reset_index()
 
     def posicao_linhas(self, fundos, datas):
+        """Como a consulta: uma linha por (data, fundo, ativo, contraparte, tipo), somando os registros."""
         datas = {T(x) for x in datas}
-        return self.lin[self.lin["codigo_IAM_fundo"].isin(fundos) & self.lin["date"].isin(datas)].copy()
+        l = self.lin[self.lin["codigo_IAM_fundo"].isin(fundos) & self.lin["date"].isin(datas)]
+        soma = ["quantidade", "quantidade_abertura", "total", "total_moeda_fundo", "pnl_total", "pnl_moeda_ativo",
+                "pnl_operacao", "pnl_cambio"]
+        maior = ["ativo", "moeda_ativo", "preco_limpo", "preco_limpo_d1", "preco_cambio", "last_patrimonio"]
+        agg = {**{c: (lambda s: s.sum(min_count=1)) for c in soma if c in l},
+               **{c: "max" for c in maior if c in l}}
+        return l.groupby(["date", "codigo_IAM_fundo", "codigo_IAM_ativo", "contraparte", "tipo"],
+                         as_index=False, dropna=False).agg(agg)
 
     def ajustes_manuais(self, de, ate):
         return self.lin[(self.lin["contraparte"] == "ajuste_pnl") & self.lin["date"].between(de, ate)].copy()
