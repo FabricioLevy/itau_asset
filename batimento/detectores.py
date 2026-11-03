@@ -38,7 +38,8 @@ VERIFICACOES = {
     "PRECO_FERIADO_ALERTA": (
         "Linha de preço em feriado (alerta)",
         "Linha de preço de um script da lista de alerta (--scripts-alerta) gravada em feriado ou fim de semana "
-        "depois da última posição: a próxima posição deve somar essa variação duas vezes."),
+        "entre a última data do batimento e o próximo dia útil: a próxima posição deve somar essa variação duas "
+        "vezes."),
     "OUTRAS_DESPESAS_ESPECIE": (
         "Integralização/resgate em espécie como despesa",
         "Uma linha sem saldo (em geral OUTRAS_DESPESAS, às vezes em mais de um registro) tem o PnL da diferença: a "
@@ -144,6 +145,13 @@ def feriados_nacionais(ano):
 def dia_util(d):
     d = pd.Timestamp(d).date()
     return d.weekday() < 5 and d not in feriados_nacionais(d.year)
+
+
+def proximo_dia_util(d):
+    d = pd.Timestamp(d).normalize() + pd.Timedelta(days=1)
+    while not dia_util(d):
+        d += pd.Timedelta(days=1)
+    return d
 
 
 # ── formatação dos textos ───────────────────────────────────────────────────────────────────────────────────
@@ -677,12 +685,13 @@ def preco_feriado(d, pos_ativos, precos_h, precos_d, anteriores, tri_d, prm):
 
 
 def alerta_feriado(d, hoje, pos_ativos, precos_fut, prm):
-    """Linhas de preço de scripts da lista de alerta gravadas em dia não útil depois de d (a próxima posição)."""
+    """Linhas de preço de scripts da lista de alerta gravadas nos dias não úteis entre d e o próximo dia útil (a
+    próxima posição), até hoje."""
     d, hoje = pd.Timestamp(d), pd.Timestamp(hoje)
     if pos_ativos.empty or precos_fut.empty:
         return []
     f = _renomeia_preco(_datas(precos_fut.copy()), "h")
-    f = f[(f["data_h"] > d) & (f["data_h"] <= hoje) & ~f["data_h"].map(dia_util)
+    f = f[(f["data_h"] > d) & (f["data_h"] < proximo_dia_util(d)) & (f["data_h"] <= hoje) & ~f["data_h"].map(dia_util)
           & f["script_h"].isin(prm.scripts_alerta) & (_num(f["var_h"]).fillna(0) != 0)]
     if f.empty:
         return []

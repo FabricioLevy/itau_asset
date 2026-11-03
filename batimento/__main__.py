@@ -23,8 +23,11 @@
 #   PRECO_FERIADO            linha de preço num feriado que a linha do dia seguinte ignora: a posição soma as
 #                            duas variações (3GALABIT/BITI11 em 18/02, 08/09 e 13/10/2026). Confirma pela
 #                            diferença do fundo e reconhece o ajuste manual (contraparte ajuste_pnl) já lançado.
-#   PRECO_FERIADO_ALERTA     linha de feriado de um script de --scripts-alerta gravada depois da última posição:
-#                            avisa antes de a próxima posição contar duas vezes.
+#   PRECO_FERIADO_ALERTA     linha de um script de --scripts-alerta num feriado ou fim de semana entre a última data
+#                            e o próximo dia útil: avisa antes de a próxima posição contar duas vezes.
+# Custo: as linhas de preço de feriado só são lidas para os fundos com algum dia entre a posição anterior e a do
+#   dia (cada grupo de fundos na própria janela); com --mesa/--fundo, as consultas de preço olham só os ativos
+#   desses fundos. O console mostra o tempo de cada etapa; -v mostra cada consulta antes de rodar e o tempo dela.
 #   PRECO_ZERO / PRECO_SALTO / PRECO_DUPLICADO   linhas suspeitas de ativos em carteira (aba Preços)
 #   AJUSTE_MANUAL            ajustes manuais de PnL já lançados no dia
 #
@@ -59,6 +62,7 @@
 import argparse
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -110,6 +114,12 @@ def escolhe_datas(fonte, data=None, de=None, ate=None, hoje=None):
 
 # ── execução ────────────────────────────────────────────────────────────────────────────────────────────────
 
+def _tempos(t):
+    """'3,4 s (linhas da posição 1,1 s · anomalias de preço 2,2 s)': o total e as etapas que levaram tempo."""
+    partes = " · ".join(f"{k} {num_br(v, 1)} s" for k, v in t.items() if v >= 0.05)
+    return f"{num_br(sum(t.values()), 1)} s" + (f" ({partes})" if partes else "")
+
+
 def roda(fonte, datas, prm, mesa=None, fundos=None, hoje=None, com_precos=True, log=print):
     hoje = pd.Timestamp(hoje or date.today()).normalize()
     datas = sorted(pd.Timestamp(d).normalize() for d in datas)
@@ -117,19 +127,30 @@ def roda(fonte, datas, prm, mesa=None, fundos=None, hoje=None, com_precos=True, 
     res = Resultado(datas=datas, triagem=pd.DataFrame(), resumo=pd.DataFrame(), ocorrencias=pd.DataFrame(),
                     precos=pd.DataFrame(), prm=prm, escopo=escopo or "todos os fundos")
     ocorr, precos = [], []
+    restrito = bool(mesa or fundos)     # com mesa/fundo, as consultas de preço olham só os ativos desses fundos
 
-    def etapa(nome, f):
+    def etapa(nome, f, tempos=None, rotulo=None):
+        """Roda f; um erro vira aviso e não para as outras etapas. Soma o tempo gasto em tempos[rotulo]."""
+        t0 = time.perf_counter()
         try:
             return f()
-        except Exception as e:                       # uma etapa que falha não para as outras
+        except Exception as e:
             res.avisos.append(f"{nome}: {type(e).__name__}: {e}")
             log(f"  [AVISO] {nome}: {type(e).__name__}: {e}")
             return None
+        finally:
+            if tempos is not None:
+                tempos[rotulo] = tempos.get(rotulo, 0.0) + time.perf_counter() - t0
 
     ini = datas[0] - pd.Timedelta(days=JANELA_DIAS)
     log(f"Lendo cotas e posição de {dt(ini)} a {dt(datas[-1])} ({res.escopo})...")
-    tri = det.triagem(fonte.cotas(ini, datas[-1], mesa, fundos), fonte.posicao_resumo(ini, datas[-1], mesa, fundos),
-                      prm)
+    leitura, t0 = {}, time.perf_counter()
+    cotas = fonte.cotas(ini, datas[-1], mesa, fundos)
+    leitura["cotas"], t0 = time.perf_counter() - t0, time.perf_counter()
+    pos_resumo = fonte.posicao_resumo(ini, datas[-1], mesa, fundos)
+    leitura["posição por fundo"] = time.perf_counter() - t0
+    tri = det.triagem(cotas, pos_resumo, prm)
+    log(f"  lido em {_tempos(leitura)}")
 
     for d in datas:
         tri_d = tri[tri["date"] == d]
@@ -140,39 +161,52 @@ def roda(fonte, datas, prm, mesa=None, fundos=None, hoje=None, com_precos=True, 
         marc = tri_d[tri_d["marcado"]]
         log(f"{dt(d)}: {int(tri_d['tem_cota'].sum())} fundos com cota, {len(marc)} acima do limite.")
         ocorr += det.ocorrencias_triagem(tri_d)
+        tempos = {}
 
         alvo = marc[marc["tem_cota"] & marc["tem_posicao"]]
         if not alvo.empty:
             datas_linhas = [d] + list(alvo["data_anterior"].dropna().unique())
             linhas = etapa(f"{dt(d)} linhas da posição", lambda: det.prepara_linhas(
-                fonte.posicao_linhas(alvo["codigo_IAM_fundo"].tolist(), datas_linhas)))
+                fonte.posicao_linhas(alvo["codigo_IAM_fundo"].tolist(), datas_linhas)), tempos, "linhas da posição")
             if linhas is not None:
                 for _, t in alvo.iterrows():
                     do_fundo = linhas[linhas["codigo_IAM_fundo"] == t["codigo_IAM_fundo"]]
                     ld = do_fundo[do_fundo["date"] == d]
                     lp = do_fundo[do_fundo["date"] == t["data_anterior"]] if pd.notna(t["data_anterior"]) \
                         else do_fundo.iloc[0:0]
-                    ocorr += etapa(f"{dt(d)} {t['codigo_IAM_fundo']}", lambda: det.verifica_fundo(t, ld, lp, prm)) or []
+                    ocorr += etapa(f"{dt(d)} {t['codigo_IAM_fundo']}", lambda: det.verifica_fundo(t, ld, lp, prm),
+                                   tempos, "verificações") or []
 
-        if (tri_d["pnl_ajuste_manual"].fillna(0) != 0).any():
-            aj = etapa(f"{dt(d)} ajustes manuais", lambda: fonte.ajustes_manuais(d, d))
+        com_ajuste = sorted(tri_d.loc[tri_d["pnl_ajuste_manual"].fillna(0) != 0, "codigo_IAM_fundo"])
+        if com_ajuste:
+            aj = etapa(f"{dt(d)} ajustes manuais", lambda: fonte.ajustes_manuais(d, d, com_ajuste),
+                       tempos, "ajustes manuais")
             if aj is not None and not aj.empty:
                 ocorr += det.ocorrencias_ajustes(aj[aj["codigo_IAM_fundo"].isin(tri_d["codigo_IAM_fundo"])])
 
         if com_precos:
             anteriores = tri_d[tri_d["tem_posicao"]].set_index("codigo_IAM_fundo")["data_anterior"].dropna()
             if not anteriores.empty:
-                ocorr += etapa(f"{dt(d)} preço de feriado",
-                               lambda: _preco_feriado(fonte, d, anteriores, tri_d, prm)) or []
+                filtro = sorted(tri_d.loc[tri_d["tem_posicao"], "codigo_IAM_fundo"]) if restrito else None
+                ocorr += etapa(f"{dt(d)} preço de feriado", lambda: _preco_feriado(fonte, d, anteriores, tri_d, prm),
+                               tempos, "preço de feriado") or []
                 p = etapa(f"{dt(d)} anomalias de preço",
-                          lambda: _anomalias(fonte, d, anteriores.min(), set(tri_d["codigo_IAM_fundo"]), prm))
+                          lambda: _anomalias(fonte, d, anteriores.mode().min(), filtro,
+                                             set(tri_d["codigo_IAM_fundo"]), prm), tempos, "anomalias de preço")
                 if p is not None and not p.empty:
                     precos.append(p)
+        log(f"  analisado em {_tempos(tempos)}")
 
     ultima = tri[tri["date"] == datas[-1]]
     if com_precos and not ultima.empty:
-        ocorr += etapa("alerta de feriado",
-                       lambda: _alertas(fonte, datas[-1], hoje, set(ultima["codigo_IAM_fundo"]), prm)) or []
+        escopo_ultima = set(ultima["codigo_IAM_fundo"])
+        tempos = {}
+        alertas = etapa("alerta de feriado", lambda: _alertas(fonte, datas[-1], hoje,
+                                                               sorted(escopo_ultima) if restrito else None,
+                                                               escopo_ultima, prm), tempos, "alerta de feriado")
+        ocorr += alertas or []
+        if tempos["alerta de feriado"] >= 0.05:
+            log(f"Alerta de feriado: {_tempos(tempos)}")
 
     res.triagem = tri[tri["date"].isin(datas)].reset_index(drop=True)
     res.ocorrencias = det.tabela_ocorrencias(ocorr).sort_values(["data", "fundo", "verificacao"], ignore_index=True)
@@ -182,31 +216,44 @@ def roda(fonte, datas, prm, mesa=None, fundos=None, hoje=None, com_precos=True, 
 
 
 def _preco_feriado(fonte, d, anteriores, tri_d, prm):
-    p_min = anteriores.min()
-    h = fonte.precos_entre(p_min, d, d)
+    """Linhas de preço entre a posição anterior de cada fundo e d. Só entram os fundos com algum dia entre as duas
+    posições, e os fundos com a mesma posição anterior são lidos juntos, cada grupo na própria janela: um fundo com
+    a posição anterior antiga não faz ler semanas de preços da carteira de todos."""
+    com_dias = anteriores[anteriores < d - pd.Timedelta(days=1)]
+    if com_dias.empty:
+        return []                                   # posições em dias seguidos: nenhuma linha no meio
+    h = pd.concat([fonte.precos_entre(a, d, d, fundos=sorted(g.index)) for a, g in com_dias.groupby(com_dias)],
+                  ignore_index=True)
     if h.empty:
         return []
-    pos = fonte.posicao_ativos_entre(d, p_min, d)
+    h = h.drop_duplicates(ignore_index=True)        # janelas que se sobrepõem trazem a mesma linha
+    ativos = sorted(set(h["codigo_IAM_ativo"]))
+    pos = fonte.posicao_ativos_lista(d, ativos)
     pos = pos[pos["codigo_IAM_fundo"].isin(tri_d["codigo_IAM_fundo"])]
-    return det.preco_feriado(d, pos, h, fonte.precos_do_dia(d, p_min, d), anteriores, tri_d, prm)
+    return det.preco_feriado(d, pos, h, fonte.precos_do_dia(d, ativos), anteriores, tri_d, prm)
 
 
-def _anomalias(fonte, d, p_min, fundos_escopo, prm):
-    an = fonte.precos_anomalos(p_min, d, d, prm.salto_preco)
-    du = fonte.precos_duplicados(p_min, d, d)
-    ativos = sorted(set(an["codigo_IAM_ativo"]) | set(du["codigo_IAM_ativo"]))
+def _anomalias(fonte, d, apos, filtro, fundos_escopo, prm):
+    """Preço zero, salto e duplicado nas linhas depois de `apos` (a posição anterior da maioria dos fundos)."""
+    an = fonte.precos_anomalos(apos, d, d, prm.salto_preco, fundos=filtro)
+    du = fonte.precos_duplicados(apos, d, d, fundos=filtro)
+    ativos = sorted(set(an.get("codigo_IAM_ativo", ())) | set(du.get("codigo_IAM_ativo", ())))
     if not ativos:
         return pd.DataFrame(columns=det.COLUNAS_PRECOS)
     pos = fonte.posicao_ativos_lista(d, ativos)
     return det.anomalias_preco(an, du, pos[pos["codigo_IAM_fundo"].isin(fundos_escopo)], prm)
 
 
-def _alertas(fonte, d, hoje, fundos_escopo, prm):
-    fim = hoje + pd.Timedelta(days=1)
-    fut = fonte.precos_entre(d, fim, d)
-    if fut.empty or not fut["log_script_from"].isin(prm.scripts_alerta).any():
+def _alertas(fonte, d, hoje, filtro, fundos_escopo, prm):
+    """Linhas dos scripts de alerta nos dias não úteis entre d e o próximo dia útil (até hoje): a próxima posição
+    vai contar essas linhas duas vezes. Rodando uma data passada, só olha o que vem logo depois dela."""
+    fim = min(det.proximo_dia_util(d), hoje + pd.Timedelta(days=1))
+    if fim <= d + pd.Timedelta(days=1):
+        return []                                   # o próximo dia útil é o dia seguinte: nada no meio
+    fut = fonte.precos_entre(d, fim, d, fundos=filtro, scripts=prm.scripts_alerta)
+    if fut.empty:
         return []
-    pos = fonte.posicao_ativos_entre(d, d, fim)
+    pos = fonte.posicao_ativos_lista(d, sorted(set(fut["codigo_IAM_ativo"])))
     return det.alerta_feriado(d, hoje, pos[pos["codigo_IAM_fundo"].isin(fundos_escopo)], fut, prm)
 
 
@@ -216,7 +263,11 @@ def corrige(fonte, res, pasta, base, com_revisao=False, aplicar=False, confirmar
     """Plano, backup e scripts (sempre); com aplicar, a transação com conferência e confirmação."""
     import correcao as cor
     plano = cor.monta_plano(res)
+    t0 = time.perf_counter()
     backup = cor.busca_linhas(fonte, plano)
+    if len(backup):
+        log(f"Correção: {len(backup)} registro(s) lido(s) da VW_FUNDOS_POSICAO em "
+            f"{num_br(time.perf_counter() - t0, 1)} s")
     os.makedirs(pasta, exist_ok=True)
     stamp = datetime.now().strftime("%H%M%S")
     arq = {"correcao": os.path.join(pasta, f"correcao_{base}_{stamp}.sql"),

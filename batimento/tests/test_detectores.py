@@ -376,6 +376,7 @@ class FonteFake:
         self.lin = det.prepara_linhas(pd.DataFrame(linhas_pos))
         self.cot = pd.DataFrame(cotas)
         self.pre = precos_df
+        self.chamadas = []              # (método, argumentos) das consultas de preço, para os testes de custo
         pl = self.cot.set_index(["date", "codigo_IAM_fundo"])["last_patrimonio"]
         self.lin["last_patrimonio"] = [pl.get((r.date, r.codigo_IAM_fundo), np.nan) for r in self.lin.itertuples()]
         self.lin["pnl_total_perc"] = self.lin["pnl_total"] / self.lin["last_patrimonio"]
@@ -416,8 +417,17 @@ class FonteFake:
         return l.groupby(["date", "codigo_IAM_fundo", "codigo_IAM_ativo", "contraparte", "tipo"],
                          as_index=False, dropna=False).agg(agg)
 
-    def ajustes_manuais(self, de, ate):
-        return self.lin[(self.lin["contraparte"] == "ajuste_pnl") & self.lin["date"].between(de, ate)].copy()
+    def ajustes_manuais(self, de, ate, fundos=None):
+        l = self.lin[(self.lin["contraparte"] == "ajuste_pnl") & self.lin["date"].between(de, ate)]
+        return (l if fundos is None else l[l["codigo_IAM_fundo"].isin(fundos)]).copy()
+
+    def _em_carteira(self, data, fundos=None, tipos=None):
+        l = self.lin[self.lin["date"] == data]
+        if fundos is not None:
+            l = l[l["codigo_IAM_fundo"].isin(fundos)]
+        if tipos is not None:
+            l = l[l["tipo"].isin(tipos)]
+        return set(l["codigo_IAM_ativo"])
 
     def _pos_ativos(self, data, ativos):
         l = self.lin[(self.lin["date"] == data) & self.lin["codigo_IAM_ativo"].isin(ativos)]
@@ -432,29 +442,36 @@ class FonteFake:
         out["pnl_ajuste_manual"] = out["pnl_ajuste_manual"].fillna(0.0)
         return out
 
-    def precos_entre(self, apos, antes, data_posicao):
-        em_carteira = set(self.lin.loc[self.lin["date"] == data_posicao, "codigo_IAM_ativo"])
+    def precos_entre(self, apos, antes, data_posicao, fundos=None, scripts=None):
+        self.chamadas.append(("precos_entre", T(apos), T(antes), None if fundos is None else list(fundos), scripts))
         p = self.pre
-        return p[(p["date"] > apos) & (p["date"] < antes) & (p["pnl_moeda_ativo"] != 0)
-                 & p["codigo_IAM_ativo"].isin(em_carteira)].copy()
+        m = ((p["date"] > apos) & (p["date"] < antes) & (p["pnl_moeda_ativo"] != 0)
+             & p["codigo_IAM_ativo"].isin(self._em_carteira(data_posicao, fundos)))
+        if scripts:
+            m &= p["log_script_from"].isin(scripts)
+        return p[m].copy()
 
-    def precos_do_dia(self, data, apos, antes):
+    def precos_do_dia(self, data, ativos):
+        self.chamadas.append(("precos_do_dia", T(data), list(ativos)))
         p = self.pre
-        com = set(p.loc[(p["date"] > apos) & (p["date"] < antes) & (p["pnl_moeda_ativo"] != 0), "codigo_IAM_ativo"])
-        return p[(p["date"] == data) & p["codigo_IAM_ativo"].isin(com)].copy()
-
-    def posicao_ativos_entre(self, data, apos, antes):
-        p = self.pre
-        com = set(p.loc[(p["date"] > apos) & (p["date"] < antes) & (p["pnl_moeda_ativo"] != 0), "codigo_IAM_ativo"])
-        return self._pos_ativos(data, com)
+        return p[(p["date"] == data) & p["codigo_IAM_ativo"].isin(set(ativos))].copy()
 
     def posicao_ativos_lista(self, data, ativos):
+        self.chamadas.append(("posicao_ativos_lista", T(data), list(ativos)))
         return self._pos_ativos(data, set(ativos))
 
-    def precos_anomalos(self, apos, ate, data_posicao, salto):
-        return self.pre.iloc[0:0].copy()
+    def precos_anomalos(self, apos, ate, data_posicao, salto, fundos=None):
+        """Como a consulta: preço zero ou salto acima de `salto`, de fundos e ações em carteira."""
+        self.chamadas.append(("precos_anomalos", T(apos), T(ate), None if fundos is None else list(fundos)))
+        p = self.pre
+        base, preco_ = det._num(p["preco_limpo_d1"]), det._num(p["preco_limpo"])
+        m = ((p["date"] > apos) & (p["date"] <= ate)
+             & p["codigo_IAM_ativo"].isin(self._em_carteira(data_posicao, fundos, ("Fund", "Equity")))
+             & ((preco_ == 0) | ((base > 0) & ((preco_ - base).abs() > salto * base))))
+        return p[m].copy()
 
-    def precos_duplicados(self, apos, ate, data_posicao):
+    def precos_duplicados(self, apos, ate, data_posicao, fundos=None):
+        self.chamadas.append(("precos_duplicados", T(apos), T(ate), None if fundos is None else list(fundos)))
         return pd.DataFrame(columns=["date", "codigo_IAM_ativo", "linhas", "preco_min", "preco_max", "script_1",
                                      "script_2"])
 
@@ -571,3 +588,70 @@ def test_intervalo_de_datas():
     assert set(res.triagem["date"]) == {T("2026-10-09"), T("2026-10-13")}
     assert len(res.resumo) == 4 and set(res.resumo["date"]) == {T("2026-10-13")}
     assert bm.nome_arquivo(res) == "batimento_20261009_20261013.xlsx"
+
+
+# ── custo: o que a análise lê da tabela de preços ──────────────────────────────────────────────────────────
+
+def test_alerta_so_olha_os_dias_ate_o_proximo_dia_util():
+    bm = carrega_main()
+    fonte = fonte_outubro()
+    fonte.pre = pd.concat([fonte.pre, precos(        # sábado depois: já é problema da posição de 19/10, não da próxima
+        (T("2026-10-17"), "3GALABIT", 47.1, 46.9, 0.2, "CotaExternaD0.py", "spquant", T("2026-10-17 19:01")))],
+        ignore_index=True)
+    # 01/10 rodado em 03/11: o próximo dia útil é 02/10, nada no meio e nenhuma consulta (antes: o mês inteiro)
+    assert bm._alertas(fonte, T("2026-10-01"), T("2026-11-03"), None, {"ITAUBLO66606"}, PRM) == []
+    assert fonte.chamadas == []
+    # 09/10 (sexta antes do feriado de 12/10): só 10, 11 e 12/10, só o script de alerta e só os fundos do escopo
+    oc = bm._alertas(fonte, T("2026-10-09"), T("2026-11-03"), ["ITAUBLO66606"], {"ITAUBLO66606"}, PRM)
+    assert fonte.chamadas[0] == ("precos_entre", T("2026-10-09"), T("2026-10-13"), ["ITAUBLO66606"],
+                                 ("CotaExternaD0.py",))
+    assert [(o["data"], o["ativo"]) for o in oc] == [(T("2026-10-12"), "3GALABIT")]
+
+
+def test_preco_feriado_le_so_os_fundos_com_dias_entre_as_posicoes():
+    bm = carrega_main()
+
+    class Registra:
+        chamadas = []
+
+        def precos_entre(self, apos, antes, data_posicao, fundos=None, scripts=None):
+            self.chamadas.append((T(apos), T(antes), fundos))
+            return precos()
+
+    d = T("2026-10-01")
+    tri_d = pd.DataFrame({"codigo_IAM_fundo": ["A", "B", "C", "D"], "marcado": False, "dif_rs": 0.0})
+    seguidas = pd.Series({"A": T("2026-09-30"), "B": T("2026-09-30")})
+    assert bm._preco_feriado(Registra(), d, seguidas, tri_d, PRM) == [] and Registra.chamadas == []
+    # C com a posição anterior de 11/09 e D de 29/09: cada um na própria janela, sem os preços de A e B
+    antigas = pd.Series({"A": T("2026-09-30"), "B": T("2026-09-30"), "C": T("2026-09-11"), "D": T("2026-09-29")})
+    assert bm._preco_feriado(Registra(), d, antigas, tri_d, PRM) == []
+    assert Registra.chamadas == [(T("2026-09-11"), d, ["C"]), (T("2026-09-29"), d, ["D"])]
+
+
+def test_consultas_de_preco_so_com_os_fundos_do_escopo():
+    bm = carrega_main()
+    fonte = fonte_outubro()
+    res = bm.roda(fonte, [T("2026-10-13")], PRM, mesa="INDEXADOS", hoje=T("2026-10-14"), log=lambda *a: None)
+    assert res.resumo.loc[res.resumo["codigo_IAM_fundo"] == "ITAUBLO66606", "verificacao"].tolist() == ["PRECO_FERIADO"]
+    com_posicao = ["FICFI53254", "FUNDOOK", "ITAUBLO66606", "ITAUIMA5P2070"]
+    por_metodo = {}
+    for c in fonte.chamadas:
+        por_metodo.setdefault(c[0], []).append(c[1:])
+    # uma janela (09/10 a 13/10, a posição anterior de todos), a lista de fundos e só o ativo com linha no feriado
+    assert por_metodo["precos_entre"] == [(T("2026-10-09"), T("2026-10-13"), com_posicao, None)]
+    assert por_metodo["precos_do_dia"] == [(T("2026-10-13"), ["3GALABIT"])]
+    assert por_metodo["precos_anomalos"] == [(T("2026-10-09"), T("2026-10-13"), com_posicao)]
+    # sem mesa nem fundo, a subconsulta fica sem lista (todos os fundos)
+    fonte = fonte_outubro()
+    bm.roda(fonte, [T("2026-10-13")], PRM, hoje=T("2026-10-14"), log=lambda *a: None)
+    assert [c[3] for c in fonte.chamadas if c[0] == "precos_anomalos"] == [None]
+
+
+def test_tempos_no_console():
+    bm = carrega_main()
+    impresso = []
+    bm.roda(fonte_outubro(), [T("2026-10-13")], PRM, hoje=T("2026-10-14"), log=impresso.append)
+    assert impresso[1].startswith("  lido em ")
+    assert impresso[2].startswith("13/10/2026: ") and impresso[3].startswith("  analisado em ")
+    assert bm._tempos({"linhas da posição": 1.04, "verificações": 0.01, "anomalias de preço": 2.2}) == \
+        "3,2 s (linhas da posição 1,0 s · anomalias de preço 2,2 s)"
